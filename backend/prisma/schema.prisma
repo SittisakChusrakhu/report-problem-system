@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int        @id @default(autoincrement())
+  user_name     String
+  user_password String
+  user_email    String     @unique
+  role          roles      @relation(fields: [role_id], references: [id])
+  role_id       Int
+  Student       Student[]
+  Lecturer      Lecturer[]
+  Admin         Admin[]
+  Problem       Problem[]
+  Feedback      Feedback[]
+}
+
+model roles {
+  id        Int    @id @default(autoincrement())
+  role_name String
+  role_desc String
+  User      User[]
+}
+
+model Student {
+  id          Int        @id @default(autoincrement())
+  stu_id      String     @unique
+  stu_major   String
+  stu_grade   String
+  stu_faculty String
+  avatar      String     @db.LongText
+  uid         User       @relation(fields: [user_id], references: [id])
+  user_id     Int
+  Problem     Problem[]
+  Feedback    Feedback[]
+}
+
+model Lecturer {
+  id           Int        @id @default(autoincrement())
+  lect_roomnum String
+  avatar       String     @db.LongText
+  uid          User       @relation(fields: [user_id], references: [id])
+  user_id      Int
+  Feedback     Feedback[]
+  Problem      Problem[]  @relation("lect_id")
+}
+
+model Admin {
+  id      Int    @id @default(autoincrement())
+  avatar  String
+  uid     User   @relation(fields: [user_id], references: [id])
+  user_id Int
+}
+
+model Problem {
+  id         Int        @id @default(autoincrement())
+  pro_title  String     @db.VarChar(255)
+  pro_type   String     @db.VarChar(255)
+  pro_desc   String
+  pro_images String     @db.LongText
+  datetime   DateTime   @default(now())
+  status     String     @default("กำลังส่งเรื่อง")
+  lect_id    Lecturer[] @relation("lect_id")
+  stu        Student    @relation(fields: [sid], references: [id])
+  sid        Int
+  feedback   Feedback[]
+  user       User?      @relation(fields: [userId], references: [id])
+  userId     Int?
+  tags       Tag[]      @relation("ProblemTag")
+}
+
+model Tag {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  problems Problem[] @relation("ProblemTag")
+}
+
+model Feedback {
+  id           Int      @id @default(autoincrement())
+  feed_massage String
+  datetime     DateTime @default(now())
+  problem      Problem  @relation(fields: [pro_id], references: [id])
+  pro_id       Int
+  lect         Lecturer @relation(fields: [lect_id], references: [id])
+  lect_id      Int
+  student      Student  @relation(fields: [stu_id], references: [id])
+  stu_id       Int
+  User         User?    @relation(fields: [userId], references: [id])
+  userId       Int?
+}
