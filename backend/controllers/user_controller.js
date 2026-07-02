@@ -1,5 +1,8 @@
 var nodemailer = require("nodemailer");
+const bcrypt = require("bcrypt");
 const prisma = require("../src/connection");
+
+const SALT_ROUNDS = 10;
 
 var transporter = nodemailer.createTransport({
   service: "gmail",
@@ -47,35 +50,54 @@ module.exports.getAllsUser = function (req, res) {
   });
 };
 
-module.exports.createUser = function (req, res) {
-  const { user_name, user_password, user_email, role_id } = req.body;
-  prisma.User.create({
-    data: {
-      user_name,
-      user_password,
-      user_email,
-      role_id,
-    },
-  }).then((User) => {
+module.exports.createUser = async function (req, res) {
+  try {
+    const { user_name, user_password, user_email, role_id } = req.body;
+    const hashedPassword = await bcrypt.hash(user_password, SALT_ROUNDS);
+
+    const User = await prisma.User.create({
+      data: {
+        user_name,
+        user_password: hashedPassword,
+        user_email,
+        role_id,
+      },
+    });
     res.json(User);
-  });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
-module.exports.updateUser = function (req, res) {
-  const { id } = req.params;
-  const { user_name, user_password, user_email, roles_id } = req.body;
-  prisma.User.update({
-    where: { id: Number(id) },
-    data: {
+module.exports.updateUser = async function (req, res) {
+  try {
+    const { id } = req.params;
+    const { user_name, user_password, user_email, roles_id } = req.body;
+
+    const data = {
       user_name,
-      user_password,
       user_email,
-      user_avatar,
       roles_id,
-    },
-  }).then((User) => {
+    };
+
+    // hash รหัสผ่านใหม่เฉพาะตอนที่ส่งมาจริง ๆ (ไม่บังคับเปลี่ยนทุกครั้งที่ update)
+    if (user_password) {
+      data.user_password = await bcrypt.hash(user_password, SALT_ROUNDS);
+    }
+
+    // หมายเหตุ: user_avatar ในโค้ดเดิมไม่มีการ declare/รับค่าจาก req.body
+    // เป็น bug เดิมที่ยังไม่ได้แก้ (อยู่ในข้อ 4 ตาม checklist) จึงตัดออกไปก่อนเพื่อไม่ให้ error
+
+    const User = await prisma.User.update({
+      where: { id: Number(id) },
+      data,
+    });
     res.json(User);
-  });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 module.exports.deleteUser = function (req, res) {
@@ -89,37 +111,42 @@ module.exports.deleteUser = function (req, res) {
 
 //login
 
-module.exports.login = function (req, res) {
-  const { user_email, user_password } = req.body;
-  prisma.User.findUnique({
-    where: {
-      user_email: user_email,
-    },
-  }).then((User) => {
+module.exports.login = async function (req, res) {
+  try {
+    const { user_email, user_password } = req.body;
+
+    const User = await prisma.User.findUnique({
+      where: { user_email: user_email },
+    });
+
     if (!User) {
       return res.status(404).json({ message: "User not found" });
     }
-    
-    if (User.user_password === user_password) {
-      if (User.role_id === 1) {
-        prisma.Student.findFirst({
-          where: { user_id: User.id },
-        }).then((result) => res.json(result));
-      } else if (User.role_id === 2) {
-        prisma.Lecturer.findFirst({
-          where: { user_id: User.id },
-        }).then((result) => res.json(result));
-      } else if (User.role_id === 3) {
-        // Admin — ส่งข้อมูล User กลับไปเลย
-        res.json(User);
-      }
-    } else {
-      res.status(401).json({ message: "Incorrect password" });
+
+    const isMatch = await bcrypt.compare(user_password, User.user_password);
+
+    if (!isMatch) {
+      return res.status(401).json({ message: "Incorrect password" });
     }
-  }).catch((error) => {
+
+    if (User.role_id === 1) {
+      const result = await prisma.Student.findFirst({
+        where: { user_id: User.id },
+      });
+      res.json(result);
+    } else if (User.role_id === 2) {
+      const result = await prisma.Lecturer.findFirst({
+        where: { user_id: User.id },
+      });
+      res.json(result);
+    } else if (User.role_id === 3) {
+      // Admin — ส่งข้อมูล User กลับไปเลย
+      res.json(User);
+    }
+  } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
-  });
+  }
 };
 
 //Student
