@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Chart } from 'chart.js';
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
-import axios from "axios";
+import { Api } from "../pages/api/api";
 
 dayjs.extend(customParseFormat);
 
@@ -39,8 +39,8 @@ dayjs.locale("th");
     const fetchChartData = async () => {
       // โค้ดสำหรับเรียก API เพื่อรับข้อมูลสำหรับแผนภูมิ
       const lid = localStorage.getItem("rid");
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/user/problem/?lid=${lid}`);
-      const data = await response.json();
+      const response = await Api.get(`/user/problem/?lid=${lid}`);
+      const data = response.data;
       setChartData(data);
     };
 
@@ -48,8 +48,8 @@ dayjs.locale("th");
     const fetchPieData = async () => {
       // โค้ดสำหรับเรียก API เพื่อรับข้อมูลสำหรับกราฟวงกลม
       const lid = localStorage.getItem("rid");
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/user/problem/?lid=${lid}`);
-      const data = await response.json();
+      const response = await Api.get(`/user/problem/?lid=${lid}`);
+      const data = response.data;
       setPieData(data);
     };
 
@@ -78,21 +78,21 @@ useEffect(() => {
             labels: chartData.labels,
             datasets: [
                 {
-                    label: "ได้รับการแก้ปัญหาแล้ว",
+                    label: "RESOLVED",
                     data: chartData.successData,
                     backgroundColor: "RGBA( 144, 238, 144, 0.2 )",
                     borderColor: "RGBA( 144, 238, 144, 1 )",
                     borderWidth: 1,
                 },
                 {
-                    label: "กำลังส่งเรื่อง",
+                    label: "PENDING",
                     data: chartData.sendingData,
                     backgroundColor: "rgba(255, 255, 0, 0.2)",
                     borderColor: "rgba(255, 255, 0, 1)",
                     borderWidth: 1,
                 },
                 {
-                    label: "การแจ้งปัญหาถูกปฏิเสธ",
+                    label: "CLOSED",
                     data: chartData.rejectedData,
                     backgroundColor: "rgba(255, 99, 132, 0.2)",
                     borderColor: "rgba(255, 99, 132, 1)",
@@ -129,7 +129,7 @@ useEffect(() => {
       new Chart(ctx, {
         type: 'pie',
         data: {
-            labels: ["ได้รับการแก้ปัญหาแล้ว", "กำลังส่งเรื่อง", "การแจ้งปัญหาถูกปฏิเสธ"],
+            labels: ["RESOLVED", "PENDING", "CLOSED"],
             datasets: [
                 {
                     data: [

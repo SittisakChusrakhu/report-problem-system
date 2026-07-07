@@ -7,72 +7,134 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ---------- ENUMS ----------
+
+enum ProblemStatus {
+  UNASSIGNED // ยังไม่มีอาจารย์รับผิดชอบ (auto-assign หาคู่ไม่เจอ)
+  PENDING // มีอาจารย์แล้ว รอดำเนินการ
+  IN_PROGRESS // กำลังดำเนินการ
+  RESOLVED // แก้ไขแล้ว
+  CLOSED // ปิดเรื่อง
+}
+
+enum ProblemType {
+  ACADEMIC // วิชาการ
+  FACILITY // สถานที่/อุปกรณ์
+  ADMINISTRATIVE
+  OTHER
+}
+
+// ---------- CORE ----------
+
 model User {
-  id            Int        @id @default(autoincrement())
-  user_name     String
-  user_password String
-  user_email    String     @unique
-  role          roles      @relation(fields: [role_id], references: [id])
-  role_id       Int
-  Student       Student[]
-  Lecturer      Lecturer[]
-  Admin         Admin[]
-  Problem       Problem[]
-  Feedback      Feedback[]
+  id                  Int       @id @default(autoincrement())
+  user_name           String
+  user_password       String    @db.VarChar(255)
+  user_email          String    @unique
+  role                roles     @relation(fields: [role_id], references: [id])
+  role_id             Int
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  // ใช้สำหรับระบบลืมรหัสผ่าน: resetToken เก็บเป็น bcrypt hash ของโทเค็นที่
+  // ส่งไปในอีเมล (ไม่เก็บ token ดิบ) และหมดอายุตาม resetTokenExpiry
+  resetToken       String?
+  resetTokenExpiry DateTime?
+
+  student      Student?
+  lecturer     Lecturer?
+  admin        Admin?
+  notification Notification[]
+
+  updatedProblems  Problem[]  @relation("ProblemUpdatedBy")
+  updatedFeedbacks Feedback[] @relation("FeedbackUpdatedBy")
+
+  @@index([role_id])
 }
 
 model roles {
   id        Int    @id @default(autoincrement())
-  role_name String
+  role_name String @unique
   role_desc String
   User      User[]
 }
 
 model Student {
-  id          Int        @id @default(autoincrement())
-  stu_id      String     @unique
+  id          Int    @id @default(autoincrement())
+  stu_id      String @unique
   stu_major   String
-  stu_grade   String
+  stu_grade   Int // ปี 1-4 ใช้ Int แทน String เพื่อ sort/filter ง่ายขึ้น
   stu_faculty String
-  avatar      String     @db.LongText
-  uid         User       @relation(fields: [user_id], references: [id])
-  user_id     Int
-  Problem     Problem[]
-  Feedback    Feedback[]
+  avatar      String @db.LongText
+
+  user    User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id Int  @unique // บังคับ 1-to-1
+
+  Problem  Problem[]
+  Feedback Feedback[]
 }
 
 model Lecturer {
-  id           Int        @id @default(autoincrement())
+  id           Int     @id @default(autoincrement())
   lect_roomnum String
-  avatar       String     @db.LongText
-  uid          User       @relation(fields: [user_id], references: [id])
-  user_id      Int
-  Feedback     Feedback[]
-  Problem      Problem[]  @relation("lect_id")
+  lect_faculty String? // ใช้จับคู่กับ stu_faculty ของนักศึกษา (optional เผื่ออาจารย์ไม่ผูกสาขา)
+  avatar       String  @db.LongText
+
+  user    User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id Int  @unique // บังคับ 1-to-1
+
+  Feedback         Feedback[]
+  expertise        LecturerExpertise[] // ประเภทปัญหาที่อาจารย์คนนี้รับดูแลได้
+  assignedProblems Problem[]           @relation("ProblemAssignedLecturer") // 1 lecturer ดูแลได้หลาย problem (nullable ฝั่ง Problem)
+}
+
+// ตารางเชื่อม: อาจารย์ 1 คนรับดูแลได้หลายประเภทปัญหา ใช้เป็นฐานให้ระบบ auto-assign ค้นหาผู้รับผิดชอบ
+model LecturerExpertise {
+  id         Int         @id @default(autoincrement())
+  lecturer   Lecturer    @relation(fields: [lecturerId], references: [id], onDelete: Cascade)
+  lecturerId Int
+  type       ProblemType
+
+  @@unique([lecturerId, type]) // กันไม่ให้ผูกประเภทเดียวกันซ้ำ
 }
 
 model Admin {
-  id      Int    @id @default(autoincrement())
-  avatar  String
-  uid     User   @relation(fields: [user_id], references: [id])
-  user_id Int
+  id     Int    @id @default(autoincrement())
+  avatar String @db.LongText // ให้ type ตรงกับ Student/Lecturer
+
+  user    User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id Int  @unique // บังคับ 1-to-1
 }
 
+// ---------- DOMAIN ----------
+
 model Problem {
-  id         Int        @id @default(autoincrement())
-  pro_title  String     @db.VarChar(255)
-  pro_type   String     @db.VarChar(255)
+  id         Int           @id @default(autoincrement())
+  pro_title  String        @db.VarChar(255)
+  pro_type   ProblemType
   pro_desc   String
-  pro_images String     @db.LongText
-  datetime   DateTime   @default(now())
-  status     String     @default("กำลังส่งเรื่อง")
-  lect_id    Lecturer[] @relation("lect_id")
-  stu        Student    @relation(fields: [sid], references: [id])
-  sid        Int
-  feedback   Feedback[]
-  user       User?      @relation(fields: [userId], references: [id])
-  userId     Int?
-  tags       Tag[]      @relation("ProblemTag")
+  pro_images String        @db.LongText
+  status     ProblemStatus @default(UNASSIGNED)
+  is_read    Boolean       @default(false)
+  create_at  DateTime      @default(now())
+  update_at  DateTime      @updatedAt
+
+  student Student @relation(fields: [sid], references: [id], onDelete: Cascade)
+  sid     Int
+
+  lecturer   Lecturer? @relation("ProblemAssignedLecturer", fields: [lecturerId], references: [id])
+  lecturerId Int? // null = ยังไม่ได้มอบหมาย (รอ auto-assign หรือแอดมินเลือกเอง)
+
+  updatedByUserId Int?
+  updatedByUser   User? @relation("ProblemUpdatedBy", fields: [updatedByUserId], references: [id])
+
+  feedback      Feedback[]
+  tags          Tag[]          @relation("ProblemTag")
+  notifications Notification[]
+
+  @@index([sid])
+  @@index([lecturerId])
+  @@index([status])
 }
 
 model Tag {
@@ -84,13 +146,41 @@ model Tag {
 model Feedback {
   id           Int      @id @default(autoincrement())
   feed_massage String
-  datetime     DateTime @default(now())
-  problem      Problem  @relation(fields: [pro_id], references: [id])
-  pro_id       Int
-  lect         Lecturer @relation(fields: [lect_id], references: [id])
-  lect_id      Int
-  student      Student  @relation(fields: [stu_id], references: [id])
-  stu_id       Int
-  User         User?    @relation(fields: [userId], references: [id])
-  userId       Int?
+  is_read      Boolean  @default(false)
+  create_at    DateTime @default(now())
+  update_at    DateTime @updatedAt
+
+  problem Problem @relation(fields: [pro_id], references: [id], onDelete: Cascade)
+  pro_id  Int
+
+  lecturer Lecturer @relation(fields: [lect_id], references: [id])
+  lect_id  Int
+
+  student Student @relation(fields: [stu_id], references: [id])
+  stu_id  Int
+
+  updatedByUserId Int?
+  updatedByUser   User?          @relation("FeedbackUpdatedBy", fields: [updatedByUserId], references: [id])
+  notifications   Notification[]
+
+  @@index([pro_id])
+}
+
+// ---------- NOTIFICATION (per-user read status) ----------
+
+model Notification {
+  id      Int  @id @default(autoincrement())
+  user_id Int
+  user    User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  pro_id  Int?
+  problem Problem? @relation(fields: [pro_id], references: [id], onDelete: Cascade)
+
+  feed_id  Int?
+  feedback Feedback? @relation(fields: [feed_id], references: [id], onDelete: Cascade)
+
+  is_read    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([user_id])
 }

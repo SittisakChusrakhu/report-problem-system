@@ -19,12 +19,14 @@ import {
 } from "@mui/material";
 import { ChevronLeft, ChevronRight } from "@mui/icons-material";
 import NavbarStu from "../components/NavbarStu";
+import { useRouter } from "next/router";
 import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { Api } from "./api/api";
 import { CloudUpload, Add, DoNotDisturbOn, Delete } from "@mui/icons-material";
 import dayjs, { Dayjs } from "dayjs";
+import { getStatusLabel, getStatusColor } from "../lib/problemStatus";
 
 interface Problem {
   id: string;
@@ -32,13 +34,14 @@ interface Problem {
   pro_type: string;
   pro_desc: string;
   pro_images: string;
-  lect_id: string;
+  lecturerId: number | null;
   sid: string;
-  datetime: string;
+  create_at: string;
   status: string;
 }
 
 export default function StudentComponent() {
+  const router = useRouter();
   const [modelproblem, setmodelproblem] = useState<Problem[]>([]);
   const [filteredData, setFilteredData] = useState<Problem[]>([]);
   const [page, setPage] = useState(0);
@@ -47,6 +50,7 @@ export default function StudentComponent() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [dialogData, setDialogData] = useState<any>(null);
   const [openDialog, setOpenDialog] = useState(false);
+  const [feedbackList, setFeedbackList] = useState<any[]>([]);
   const [openEdit, setOpenEdit] = useState(false);
   const [editData, setEditData] = useState<any>(null);
   const [title, setTitle] = useState("");
@@ -54,23 +58,32 @@ export default function StudentComponent() {
   const [details, setDetails] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>([]);
 
-  useEffect(() => {
+  const fetchProblems = () => {
     const lid = localStorage.getItem("rid");
-    console.log(lid);
 
-    var config = {
-      method: "get",
-      url: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/user/problem/?sid=${lid}`,
-      headers: {},
-    };
-
-    axios(config)
+    // Protected endpoint — raw axios never attached the JWT and silently
+    // 401'd. Api attaches it automatically.
+    Api.get(`/user/problem/?sid=${lid}`)
       .then(function (response) {
         setmodelproblem(response.data);
+
+        // ปลุกกระดิ่งแจ้งเตือนให้เช็ค unread count ทันที แทนที่จะรอรอบ
+        // poll 30 วิของตัวเอง — ให้ badge อัปเดตไวขึ้นตามจังหวะ poll ของ
+        // หน้านี้ (15 วิ) แทน
+        window.dispatchEvent(new Event("notif:refresh-count"));
       })
       .catch(function (error) {
         console.log(error);
       });
+  };
+
+  useEffect(() => {
+    fetchProblems();
+
+    // โพลรายการปัญหาเป็นระยะ ให้หน้าอัปเดตเองเวลาอาจารย์ตอบกลับ/สถานะเปลี่ยน
+    // โดยไม่ต้องกดรีเฟรชหน้าเอง
+    const interval = setInterval(fetchProblems, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   const upload_multiple_image = async (e: any) => {
@@ -101,7 +114,10 @@ export default function StudentComponent() {
     const updatedImageUrls = [...imageUrls];
     updatedImageUrls.splice(index, 1);
     setImageUrls(updatedImageUrls);
-  
+    setCurrentImageIndex((prev) =>
+      Math.min(prev, Math.max(0, updatedImageUrls.length - 1))
+    );
+
     // อัปเดตข้อมูล pro_images ใน dialogData
     if (dialogData) {
       const updatedProImages = dialogData.pro_images
@@ -115,12 +131,14 @@ export default function StudentComponent() {
 
   const onConfirmUpdate = () => {
     if (editData) {
+      // NOTE: no longer sending `datetime` — the backend schema replaced
+      // that with an auto-managed `update_at` timestamp, so the field isn't
+      // accepted by the update endpoint anymore.
       const updatedData = {
         pro_title: title,
         pro_type: type,
         pro_desc: details,
         pro_images: editData.pro_images,
-        datetime: new Date().toISOString(), // กำหนดค่า datetime เป็นปัจจุบัน
       };
   
       // ตรวจสอบว่ามีอัปเดตรูปภาพหรือไม่
@@ -151,13 +169,7 @@ export default function StudentComponent() {
           }
   
           const lid = localStorage.getItem("rid");
-          var config = {
-            method: "get",
-            url: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/user/problem/?sid=${lid}`,
-            headers: {},
-          };
-  
-          axios(config)
+          Api.get(`/user/problem/?sid=${lid}`)
             .then(function (response) {
               setmodelproblem(response.data);
             })
@@ -175,8 +187,7 @@ export default function StudentComponent() {
   
 
   const deleteproblem = (pid: string) => {
-    axios
-      .delete(`/problem/${pid}`)
+    Api.delete(`/problem/${pid}`)
       .then((response) => {
         toast.error("ลบรายงานปัญหาของคุณแล้ว", {
           position: "top-center",
@@ -189,13 +200,7 @@ export default function StudentComponent() {
           theme: "colored",
         });
         const lid = localStorage.getItem("rid");
-        var config = {
-          method: "get",
-          url: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/user/problem/?sid=${lid}`,
-          headers: {},
-        };
-
-        axios(config)
+        Api.get(`/user/problem/?sid=${lid}`)
           .then(function (response) {
             setmodelproblem(response.data);
           })
@@ -234,14 +239,40 @@ export default function StudentComponent() {
     setImageUrls(problem.pro_images.split(","));
     setCurrentImageIndex(0);
 
+    Api.get(`/feedback?pro_id=${problem.id}`)
+      .then((response: any) => {
+        setFeedbackList(response.data);
+      })
+      .catch((error) => {
+        console.log(error);
+      });
+
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setDialogData(null);
+    setFeedbackList([]);
   };
 
+  // กดรายการแจ้งเตือนบนกระดิ่งจะ push มาที่ /stu_listreport?open=<pro_id>
+  // พอโหลดรายการปัญหามาแล้ว ให้ auto-open dialog ของปัญหานั้นเลย
+  useEffect(() => {
+    if (!router.isReady) return;
+
+    const { open } = router.query;
+    if (!open || modelproblem.length === 0) return;
+
+    const target = modelproblem.find(
+      (problem) => String(problem.id) === String(open)
+    );
+
+    if (target) {
+      handleOpenDialog(target);
+      router.replace("/stu_listreport", undefined, { shallow: true });
+    }
+  }, [router.isReady, router.query, modelproblem]);
 
   return (
     <>
@@ -291,15 +322,9 @@ export default function StudentComponent() {
                       <TableCell>{problem.pro_type}</TableCell>
                       <TableCell>
                         <Chip
-                          label={problem.status}
+                          label={getStatusLabel(problem.status)}
                           size="small"
-                          color={
-                            problem.status === "ได้รับการแก้ปัญหาแล้ว"
-                              ? "success"
-                              : problem.status === "การแจ้งปัญหาถูกปฏิเสธ"
-                              ? "error"
-                              : "warning"
-                          }
+                          color={getStatusColor(problem.status)}
                           variant="outlined"
                         />
                       </TableCell>
@@ -397,49 +422,88 @@ export default function StudentComponent() {
               Images:
             </Typography>
             <Box mx={2}>
-              {dialogData && dialogData.pro_images && (
-                <>
-                  <img
-                    src={dialogData.pro_images
-                      .split(",")
-                      [currentImageIndex]?.trim()}
-                    alt={`Problem Image ${currentImageIndex + 1}`}
-                    style={{
-                      width: "100%",
-                      height: "auto",
-                      objectFit: "contain",
-                    }}
-                  />
-                  <Button onClick={() => deleteImage(currentImageIndex)}>
-                    <Delete />
-                  </Button>
-                </>
+              {imageUrls.length > 0 && imageUrls[currentImageIndex] ? (
+                <Box>
+                  <Box display="flex" alignItems="center" justifyContent="center">
+                    <Button
+                      disabled={currentImageIndex === 0}
+                      onClick={() =>
+                        setCurrentImageIndex((i) => Math.max(0, i - 1))
+                      }
+                    >
+                      <ChevronLeft />
+                    </Button>
+                    <img
+                      src={imageUrls[currentImageIndex]?.trim()}
+                      alt={`Problem Image ${currentImageIndex + 1}`}
+                      style={{
+                        maxWidth: "80%",
+                        maxHeight: 260,
+                        objectFit: "contain",
+                        borderRadius: 8,
+                      }}
+                    />
+                    <Button
+                      disabled={currentImageIndex === imageUrls.length - 1}
+                      onClick={() =>
+                        setCurrentImageIndex((i) =>
+                          Math.min(imageUrls.length - 1, i + 1)
+                        )
+                      }
+                    >
+                      <ChevronRight />
+                    </Button>
+                  </Box>
+
+                  <Box display="flex" justifyContent="center" mt={1}>
+                    <Button
+                      size="small"
+                      color="error"
+                      startIcon={<Delete />}
+                      onClick={() => deleteImage(currentImageIndex)}
+                    >
+                      ลบรูปนี้
+                    </Button>
+                  </Box>
+
+                  {imageUrls.length > 1 && (
+                    <Box
+                      display="flex"
+                      gap={1}
+                      mt={1.5}
+                      justifyContent="center"
+                      flexWrap="wrap"
+                    >
+                      {imageUrls.map((imageUrl, index) => (
+                        <Box
+                          key={index}
+                          component="img"
+                          src={imageUrl}
+                          alt={`Thumbnail ${index + 1}`}
+                          onClick={() => setCurrentImageIndex(index)}
+                          sx={{
+                            width: 48,
+                            height: 48,
+                            objectFit: "cover",
+                            borderRadius: 1,
+                            cursor: "pointer",
+                            border:
+                              index === currentImageIndex
+                                ? "2px solid #1976d2"
+                                : "2px solid transparent",
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  ไม่มีรูปภาพประกอบ
+                </Typography>
               )}
             </Box>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12}>
-                <Grid container spacing={2}>
-                  {imageUrls.map((imageUrl, index) => (
-                    <div key={index}>
-                      <Button
-                        style={{ marginTop: 10, marginLeft: 30 }}
-                        onClick={() => deleteImage(index)}
-                      >
-                        <Delete />
-                      </Button>
-                      <Grid item>
-                        {imageUrl && (
-                          <img
-                            src={imageUrl}
-                            alt={`Image ${index}`}
-                            width={50}
-                          />
-                        )}
-                      </Grid>
-                    </div>
-                  ))}
-                </Grid>
-              </Grid>
+            <Grid container spacing={2} alignItems="center" sx={{ mt: 1 }}>
               <Grid item>
                 <Button
                   variant="contained"
@@ -460,6 +524,29 @@ export default function StudentComponent() {
                 </Button>
               </Grid>
             </Grid>
+          </Box>
+
+          <Box mt={3} pt={2} borderTop="1px solid #e0e0e0">
+            <Typography variant="subtitle1" fontWeight={600} mb={1.5}>
+              การตอบกลับจากอาจารย์
+            </Typography>
+            {feedbackList.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                ยังไม่มีการตอบกลับ
+              </Typography>
+            ) : (
+              feedbackList.map((fb) => (
+                <Box
+                  key={fb.id}
+                  sx={{ bgcolor: "#f5f5f5", borderRadius: 2, p: 1.5, mb: 1 }}
+                >
+                  <Typography variant="body2">{fb.feed_massage}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(fb.create_at).toLocaleString("th-TH")}
+                  </Typography>
+                </Box>
+              ))
+            )}
           </Box>
 
           <Box mt={2}>

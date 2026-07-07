@@ -26,6 +26,7 @@ import "react-toastify/dist/ReactToastify.css";
 import { CloudUpload, Delete, Send } from "@mui/icons-material";
 import "dayjs/locale/th";
 import dayjs, { Dayjs } from "dayjs";
+import { PROBLEM_TYPE_LABELS } from "../lib/problemStatus";
 
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;
@@ -48,16 +49,17 @@ export default function CreateProblemPage() {
     id: number;
   }
 
+  // Backend Problem.lecturerId is a single optional Int now (previously a
+  // many-to-many lect_id array) — a problem can be assigned to at most one
+  // lecturer.
   interface Problem {
     id: number;
     pro_title: string;
     pro_type: string;
     pro_desc: string;
     pro_image: string;
-    lect_id: Lecturer[];
+    lecturerId?: number;
     stu: number;
-    datetime: dayjs.Dayjs;
-    status: string;
     tags: Tag[];
   }
 
@@ -67,10 +69,8 @@ export default function CreateProblemPage() {
     pro_type: "",
     pro_desc: "",
     pro_image: "",
-    lect_id: [],
+    lecturerId: undefined,
     stu: 0,
-    datetime: dayjs(),
-    status: "กำลังส่งเรื่อง",
     tags: [],
   });
 
@@ -84,16 +84,12 @@ export default function CreateProblemPage() {
     { id: number; username: string }[]
   >([]);
   const [GetAllLectures, setGetAllLectures] = useState<Lecturer[]>([]);
-  const [selectLecturer, setSelectLecturer] = useState<string[]>([]);
+  const [selectLecturer, setSelectLecturer] = useState<string>("");
   useEffect(() => {
     dayjs.locale("th");
     setproblem({ ...problem, stu: Number(localStorage.getItem("rid")) });
 
-    axios({
-      method: "get",
-      url: (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api') + "/lecturer/all",
-      headers: {},
-    })
+    Api.get("/lecturer/all")
       .then(function (response: any) {
         console.log(response.data);
         setAllLectures(response.data);
@@ -107,37 +103,45 @@ export default function CreateProblemPage() {
       });
   }, []);
 
-  const handleChangeLecturerId = (
-    event: SelectChangeEvent<typeof selectLecturer>
-  ) => {
-    const {
-      target: { value },
-    } = event;
-    console.log(value);
-    setSelectLecturer(typeof value === "string" ? value.split(",") : value);
+  const handleChangeLecturerId = (event: SelectChangeEvent<string>) => {
+    setSelectLecturer(event.target.value);
   };
 
   const handleSubmitstu = async () => {
-    setproblem({ ...problem, datetime: dayjs() });
     problem.pro_image = imageUrls.join(",");
     problem.tags = selectedTags;
-    problem.lect_id = selectLecturer.map((lect_id) => {
-      return { id: Number(lect_id) };
-    });
+    problem.pro_type = selectProblemType;
+    problem.lecturerId = selectLecturer ? Number(selectLecturer) : undefined;
     console.log(problem);
-    const res = await Api.post("/problem", problem);
-    if (res.data) {
-      toast.success("คุณส่งรายงานปัญหาแล้ว", {
-        position: "top-center",
-        autoClose: 2500,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        progress: undefined,
-        theme: "colored",
-      });
-      //setTimeout(location.reload.bind(location), 3000);
+    try {
+      const res = await Api.post("/problem", problem);
+      if (res.data) {
+        toast.success("คุณส่งรายงานปัญหาแล้ว", {
+          position: "top-center",
+          autoClose: 2500,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          progress: undefined,
+          theme: "colored",
+        });
+        //setTimeout(location.reload.bind(location), 3000);
+      }
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "ส่งรายงานปัญหาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+        {
+          position: "top-center",
+          autoClose: 3000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          progress: undefined,
+          theme: "colored",
+        }
+      );
     }
   };
 
@@ -162,6 +166,15 @@ export default function CreateProblemPage() {
     const updatedImageUrls = [...imageUrls];
     updatedImageUrls.splice(index, 1);
     setImageUrls(updatedImageUrls);
+  };
+
+  // pro_type is a required enum on the backend (ProblemType). The old form
+  // never actually collected it — the "pro_type" labeled dropdown was really
+  // bound to tag selection, so every submitted problem silently had an empty
+  // pro_type. Added a real selector for it here.
+  const [selectProblemType, setSelectProblemType] = useState<string>("");
+  const handleChangeProblemType = (event: SelectChangeEvent<string>) => {
+    setSelectProblemType(event.target.value);
   };
 
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -225,20 +238,43 @@ export default function CreateProblemPage() {
               label="หัวข้อ"
               id="pro_title"
               name="pro_title"
+              value={problem.pro_title}
               onChange={handleChangeproblem}
               fullWidth
+              inputProps={{ maxLength: 255 }}
+              helperText={`${problem.pro_title.length}/255`}
               sx={{ mt: 1.5, mb: 3 }}
             />
 
             <Grid container spacing={2.5} sx={{ mb: 3 }}>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
+                  <InputLabel id="pro-type-select-label">ประเภทปัญหา</InputLabel>
+                  <Select
+                    labelId="pro-type-select-label"
+                    id="pro_type"
+                    name="pro_type"
+                    value={selectProblemType}
+                    onChange={handleChangeProblemType}
+                    input={<OutlinedInput label="ประเภทปัญหา" />}
+                  >
+                    {Object.entries(PROBLEM_TYPE_LABELS).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>
+                        {label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
                   <InputLabel id="tag-select-label">หัวข้อปัญหา</InputLabel>
                   <Select
                     labelId="tag-select-label"
-                    id="pro_type"
+                    id="tags"
                     multiple
-                    name="pro_type"
+                    name="tags"
                     value={selectTagIds}
                     onChange={handleChangeTag}
                     input={<OutlinedInput label="หัวข้อปัญหา" />}
@@ -276,44 +312,23 @@ export default function CreateProblemPage() {
 
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
-                  <InputLabel id="lecturer-select-label">อาจารย์</InputLabel>
+                  {/* Single-select: backend Problem.lecturerId only accepts
+                      one lecturer now (was a multi-select array before). */}
+                  <InputLabel id="lecturer-select-label">อาจารย์ (ไม่บังคับ)</InputLabel>
                   <Select
                     labelId="lecturer-select-label"
-                    id="lect_id"
-                    multiple
-                    name="lect_id"
+                    id="lecturerId"
+                    name="lecturerId"
                     value={selectLecturer}
                     onChange={handleChangeLecturerId}
-                    input={<OutlinedInput label="อาจารย์" />}
-                    renderValue={(selected) => {
-                      const lecturers = selected as string[];
-                      return (
-                        <div style={{ display: "flex", flexWrap: "wrap" }}>
-                          {lecturers.map((lecturer: any) => (
-                            <Chip
-                              key={lecturer}
-                              label={
-                                AllLectures.find(
-                                  (lect: any) => lect.id === Number(lecturer)
-                                )?.username
-                              }
-                              sx={{ m: 0.5 }}
-                              size="small"
-                            />
-                          ))}
-                        </div>
-                      );
-                    }}
-                    MenuProps={MenuProps}
+                    input={<OutlinedInput label="อาจารย์ (ไม่บังคับ)" />}
                   >
+                    <MenuItem value="">
+                      <em>ไม่ระบุ (ให้ระบบมอบหมายภายหลัง)</em>
+                    </MenuItem>
                     {AllLectures.map((lecturer, index) => (
                       <MenuItem key={index} value={String(lecturer.id)}>
-                        <Checkbox
-                          checked={
-                            selectLecturer.indexOf(String(lecturer.id)) > -1
-                          }
-                        />
-                        <ListItemText primary={lecturer.username} />
+                        {lecturer.username}
                       </MenuItem>
                     ))}
                   </Select>

@@ -12,6 +12,7 @@ import { Edit, Close, Save } from "@mui/icons-material";
 import React, { useState } from "react";
 import NavbarStu from "../components/NavbarStu";
 import axios from "axios";
+import { Api } from "./api/api";
 import 'react-toastify/dist/ReactToastify.css';
 import "dayjs/locale/th"
 import Avatar from '@mui/material/Avatar';
@@ -60,15 +61,19 @@ export default function StudentComponent() {
   }, []);
 
   React.useEffect(() => {
-    axios
-      .get<any[]>(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/student?id=${rid}`)
+    Api
+      .get<any[]>(`/student?id=${rid}`)
       .then(function (response) {
+        // Backend returns snake_case fields (username, stu_id, stu_email,
+        // stu_grade, stu_faculty, stu_major) — this was reading camelCase
+        // names that don't exist on the response, and stu_faculty was
+        // accidentally being set from the grade field.
         setUsername(response.data[0].username);
-        setStuEmail(response.data[0].stuEmail);
-        setStuId(response.data[0].stuId);
-        setStuGrade(response.data[0].stuGrade);
-        setStuFaculty(response.data[0].stuGrade);
-        setStuMajor(response.data[0].stuMajor);
+        setStuEmail(response.data[0].stu_email);
+        setStuId(response.data[0].stu_id);
+        setStuGrade(response.data[0].stu_grade);
+        setStuFaculty(response.data[0].stu_faculty);
+        setStuMajor(response.data[0].stu_major);
         setAvatar(response.data[0].avatar);
         setuid(response.data[0].uid);
         setdatastudent(response.data[0]);
@@ -93,8 +98,8 @@ export default function StudentComponent() {
       }
     };
 
-    axios
-      .put(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/student/${rid}`, newData)
+    Api
+      .put(`/student/${rid}`, newData)
       .then(function (response) {
         console.log(response.data);
         //window.location.reload();

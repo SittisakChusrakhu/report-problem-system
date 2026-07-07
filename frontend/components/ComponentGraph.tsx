@@ -4,8 +4,9 @@ import Chart from "chart.js/auto";
 import { ChartTypeRegistry } from 'chart.js/auto';
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
-import axios from "axios";
+import { Api } from "../pages/api/api";
 import { SelectChangeEvent } from '@mui/material';
+import { getStatusBucket, getStatusLabel } from "../lib/problemStatus";
 
 dayjs.extend(customParseFormat);
 
@@ -15,9 +16,9 @@ interface Problem {
     pro_type: string;
     pro_desc: string;
     pro_image: string;
-    lect_id: string;
+    lecturerId: number | null;
     sid: string;
-    datetime: string;
+    create_at: string;
     status: string;
 }
 
@@ -46,30 +47,29 @@ export default function ChartComponent(props: Props) {
         const fetchData = async (selectedOption: string) => {
             try {
                 const lid = localStorage.getItem("rid");
-                const response = await axios.get(
-                    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/user/problem/?lid=${lid}&axes=${selectedOption}`
-                );
+                const response = await Api.get(`/user/problem/?lid=${lid}&axes=${selectedOption}`);
                 const problemData: Problem[] = response.data;
                 const startDate = dayjs().subtract(1, "year");
                 const filteredData = problemData.filter((problem: Problem) =>
-                    dayjs(problem.datetime).isAfter(startDate)
+                    dayjs(problem.create_at).isAfter(startDate)
                 );
 
                 const groupedData = filteredData.reduce(
                     (result: Record<string, number>, problem: Problem) => {
-                        const date = dayjs(problem.datetime).format(selectedOption);
+                        const date = dayjs(problem.create_at).format(selectedOption);
                         if (!result[date]) {
                             result[date] = 0;
                         }
-                        if (problem.status === "ได้รับการแก้ปัญหาแล้ว") {
+                        const bucket = getStatusBucket(problem.status);
+                        if (bucket === "resolved") {
                             result[date]++;
-                        } else if (problem.status === "การแจ้งปัญหาถูกปฏิเสธ") {
+                        } else if (bucket === "closed") {
                             const rejectedDate = `Rejected ${date}`;
                             if (!result[rejectedDate]) {
                                 result[rejectedDate] = 0;
                             }
                             result[rejectedDate]++;
-                        } else if (problem.status === "กำลังส่งเรื่อง") {
+                        } else {
                             const sendingDate = `Sending ${date}`;
                             if (!result[sendingDate]) {
                                 result[sendingDate] = 0;
@@ -122,21 +122,21 @@ export default function ChartComponent(props: Props) {
                         labels: data.labels,
                         datasets: [
                             {
-                                label: "ได้รับการแก้ปัญหาแล้ว",
+                                label: getStatusLabel("RESOLVED"),
                                 data: data.successData,
                                 backgroundColor: "RGBA( 144, 238, 144, 0.2 )",
                                 borderColor: "RGBA( 144, 238, 144, 1 )",
                                 borderWidth: 1,
                             },
                             {
-                                label: "กำลังส่งเรื่อง",
+                                label: "อยู่ระหว่างดำเนินการ",
                                 data: data.sendingData,
                                 backgroundColor: "rgba(255, 255, 0, 0.2)",
                                 borderColor: "rgba(255, 255, 0, 1)",
                                 borderWidth: 1,
                             },
                             {
-                                label: "การแจ้งปัญหาถูกปฏิเสธ",
+                                label: getStatusLabel("CLOSED"),
                                 data: data.rejectedData,
                                 backgroundColor: "rgba(255, 99, 132, 0.2)",
                                 borderColor: "rgba(255, 99, 132, 1)",

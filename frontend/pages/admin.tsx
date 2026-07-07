@@ -1,7 +1,7 @@
 import { AssignmentLate, PeopleAlt, School } from "@mui/icons-material";
 import { Box, Typography, Grid, Paper } from "@mui/material";
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { Api } from "./api/api";
 import NavbarLayout from "../components/NavbarLayout";
 
 const statCards = [
@@ -21,9 +21,12 @@ export default function BasicCard() {
 
   const fetchData = async () => {
     try {
-      const response1 = await axios.get((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api') + "/user/problem");
-      const response2 = await axios.get((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api') + "/student/all");
-      const response3 = await axios.get((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api') + "/lecturer/all");
+      // These are protected endpoints — using raw axios here (as before)
+      // never attached the JWT and silently failed with 401. Api attaches
+      // it automatically.
+      const response1 = await Api.get("/user/problem");
+      const response2 = await Api.get("/student/all");
+      const response3 = await Api.get("/lecturer/all");
 
       setProblemCount(response1.data.length);
       setStudentCount(response2.data.length);
@@ -32,6 +35,7 @@ export default function BasicCard() {
       console.error(error);
     }
   };
+
 
   const counts: Record<string, number> = { studentCount, lecturerCount, problemCount };
 

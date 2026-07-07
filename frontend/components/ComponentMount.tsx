@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { Api } from "../pages/api/api";
 import styles from "../styles/Home.module.css";
 
 interface Props { }
@@ -10,9 +10,9 @@ interface Problem {
     pro_type: string;
     pro_desc: string;
     pro_image: string;
-    lect_id: string;
+    lecturerId: number | null;
     sid: string;
-    datetime: string;
+    create_at: string;
     course: string;
     status: string;
 }
@@ -42,11 +42,11 @@ const ProblemCountComponent: React.FC<Props> = () => {
         const fetchData = async () => {
             try {
                 const lid = localStorage.getItem("rid");
-                const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/user/problem/?lid=${lid}`);
+                const response = await Api.get(`/user/problem/?lid=${lid}`);
                 const problemData: Problem[] = response.data;
 
                 const currentMonthProblems = problemData.filter((problem) => {
-                    const problemMonth = new Date(problem.datetime).getMonth();
+                    const problemMonth = new Date(problem.create_at).getMonth();
                     return problemMonth === currentMonth;
                 });
 
@@ -58,7 +58,7 @@ const ProblemCountComponent: React.FC<Props> = () => {
 
                 const previousMonth = currentMonth - 1 >= 0 ? currentMonth - 1 : 11;
                 const previousMonthProblems = problemData.filter((problem) => {
-                    const problemMonth = new Date(problem.datetime).getMonth();
+                    const problemMonth = new Date(problem.create_at).getMonth();
                     return problemMonth === previousMonth;
                 });
 

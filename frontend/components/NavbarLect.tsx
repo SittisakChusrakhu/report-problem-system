@@ -1,4 +1,4 @@
-import { AddAlert, Create, Description, Home, Logout, Menu, NotificationsActive } from "@mui/icons-material";
+import { AddAlert, Create, Description, Home, Logout, Menu } from "@mui/icons-material";
 import {
     Toolbar,
     ListItem,
@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import { useRouter } from "next/router";
 import React from "react";
+import NotificationBell from "./NotificationBell";
 
 const drawerWidth = 260;
 
@@ -42,6 +43,8 @@ export default function ResponsiveDrawer(props: Props) {
 
     const onLogout = () => {
         localStorage.removeItem("Logged");
+        localStorage.removeItem("token");
+        localStorage.removeItem("rid");
         router.push("/");
     };
 
@@ -119,11 +122,7 @@ export default function ResponsiveDrawer(props: Props) {
                         หน้าหลัก
                     </Typography>
                     <Box sx={{ flexGrow: 1 }} />
-                    <Tooltip title="การแจ้งเตือน">
-                        <IconButton sx={{ color: "text.secondary" }}>
-                            <NotificationsActive />
-                        </IconButton>
-                    </Tooltip>
+                    <NotificationBell role="lecturer" />
                     <Box sx={{ display: "flex", alignItems: "center", ml: 1.5, gap: 1 }}>
                         <Avatar sx={{ width: 32, height: 32, bgcolor: "primary.main", fontSize: 14 }}>L</Avatar>
                         <Typography variant="body2" noWrap sx={{ display: { xs: "none", sm: "block" } }}>

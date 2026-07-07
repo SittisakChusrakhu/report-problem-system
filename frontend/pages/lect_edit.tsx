@@ -13,6 +13,7 @@ import { Edit, Close, Save } from "@mui/icons-material";
 import React, { useState } from "react";
 import NavbarLect from "../components/NavbarLect";
 import axios from "axios";
+import { Api } from "./api/api";
 
 interface LecturerData {
     lect_roomnum: String;
@@ -40,10 +41,12 @@ export default function LecturerComponent() {
     }, []);
 
     React.useEffect(() => {
-        axios
-            .get<any[]>(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/lecturer?id=${rid}`)
+        Api
+            .get<any[]>(`/lecturer?id=${rid}`)
             .then(function (response) {
-                setUsername(response.data[0].user_name);
+                // Backend's lecturer shape returns "username" (no
+                // underscore), unlike "user_email" which does have one.
+                setUsername(response.data[0].username);
                 setUserEmail(response.data[0].user_email);
                 setLectRoomum(response.data[0].lect_roomnum);
                 setAvatar(response.data[0].avatar);
@@ -65,8 +68,8 @@ export default function LecturerComponent() {
                 user_email: user_email,
             },
         };
-        axios
-            .put(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/lecturer/${rid}`, newData)
+        Api
+            .put(`/lecturer/${rid}`, newData)
             .then(function (response) {
                 console.log(response.data);
                 //window.location.reload();

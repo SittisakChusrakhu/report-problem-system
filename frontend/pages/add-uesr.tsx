@@ -13,19 +13,12 @@ import {
 import { DeleteOutline } from "@mui/icons-material";
 import React from "react";
 import NavbarLayout from "../components/NavbarLayout";
-import axios from 'axios'
 import { Api } from "./api/api"
 import { ToastContainer, toast } from "react-toastify";
 import 'react-toastify/dist/ReactToastify.css';
 
 
 export default function BasicCard() {
-  var config = {
-    method: 'get',
-    url: process.env.NEXT_PUBLIC_API_URL + '/student/all',
-    headers: {}
-
-  };
 
 
   const deletestudent = async (sid: any, uid: any) => {
@@ -49,7 +42,7 @@ export default function BasicCard() {
 
   const [datat, setDatat] = React.useState([])
   React.useEffect(() => {
-    axios(config).then(function (response: any) {
+    Api.get("/student/all").then(function (response: any) {
       setDatat(response.data)
     })
       .catch(function (error) {

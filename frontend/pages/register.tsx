@@ -42,6 +42,7 @@ export default function register() {
 
     const [lecturer, setlecturer] = React.useState<any>({
         lect_roomnum: "",
+        lect_faculty: "",
         avatar: "",
         user_id: "",
     });
@@ -73,7 +74,10 @@ export default function register() {
 
     const handleSubmitlect = async () => {
         console.log(lecturer)
-        if (Object.values(lecturer).includes("")) {
+        // lect_faculty is optional on the backend (nullable), so it's left
+        // out of the "all fields must be filled" check below.
+        const { lect_faculty, ...requiredFields } = lecturer;
+        if (Object.values(requiredFields).includes("")) {
             alert("กรุณากรอกข้อมูลให้ครบ");
         } else {
             const res = await Api.post("/lecturer", lecturer);
@@ -291,6 +295,16 @@ export default function register() {
                     fullWidth
                     variant="standard"
                     onChange={handleChangelect}
+                />
+                <TextField
+                    margin="dense"
+                    id="lect_faculty"
+                    name="lect_faculty"
+                    label="คณะ (ไม่บังคับ)"
+                    fullWidth
+                    variant="standard"
+                    onChange={handleChangelect}
+                    sx={{ mt: 2 }}
                 />
                 <Button variant="contained" component="label" sx={{ mt: 1 }}>
                     Upload

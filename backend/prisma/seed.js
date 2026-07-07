@@ -1,4 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
+const bcrypt = require("bcrypt");
 const prisma = new PrismaClient();
 
 // ==================== DATA ====================
@@ -43,8 +44,6 @@ const tagNames = [
   "การบ้าน", "ข้อสอบ", "คอมพิวเตอร์", "อินเทอร์เน็ต", "ห้องเรียน",
   "อุปกรณ์การเรียน", "ตารางเรียน", "อาจารย์", "เพื่อน", "ทุนการศึกษา"
 ];
-
-const problemTypes = ["ปัญหาการเรียน", "ปัญหาอุปกรณ์การเรียน"];
 
 const problemTemplates = [
   { title: "ไม่เข้าใจเนื้อหาวิชา", desc: "ไม่เข้าใจเนื้อหาที่สอนในคาบเรียน อธิบายเร็วเกินไปและไม่มีเวลาถาม" },
@@ -114,22 +113,24 @@ async function main() {
     const lname = lectLastNames[i];
     const email = `lecturer${i + 1}@ubu.ac.th`;
 
-    const user = await prisma.User.upsert({
+    const plainPassword = `Lect${i + 1}@2024`;
+    const user = await prisma.user.upsert({
       where: { user_email: email },
       update: {},
       create: {
         user_name: `${fname} ${lname}`,
         user_email: email,
-        user_password: `Lect${i + 1}@2024`,
+        user_password: await bcrypt.hash(plainPassword, 10),
         role_id: 2,
       },
     });
 
-    const lect = await prisma.Lecturer.upsert({
+    const lect = await prisma.lecturer.upsert({
       where: { id: i + 1 },
       update: {},
       create: {
         lect_roomnum: `EN${100 + (i + 1)}`,
+        lect_faculty: faculties[i % faculties.length],
         avatar: "",
         user_id: user.id,
       },
@@ -153,24 +154,25 @@ async function main() {
     const majorList = majors[faculty];
     const major = majorList[i % majorList.length];
 
-    const user = await prisma.User.upsert({
+    const plainPassword = `Stu${i + 1}@2024`;
+    const user = await prisma.user.upsert({
       where: { user_email: email },
       update: {},
       create: {
         user_name: `${fname} ${lname}`,
         user_email: email,
-        user_password: `Stu${i + 1}@2024`,
+        user_password: await bcrypt.hash(plainPassword, 10),
         role_id: 1,
       },
     });
 
-    const stu = await prisma.Student.upsert({
+    const stu = await prisma.student.upsert({
       where: { stu_id: stuId },
       update: {},
       create: {
         stu_id: stuId,
         stu_major: major,
-        stu_grade: grade,
+        stu_grade: Number(grade), // schema has stu_grade as Int, not String
         stu_faculty: faculty,
         avatar: "",
         user_id: user.id,
@@ -186,19 +188,22 @@ async function main() {
 
   // 5. Problems (100 รายการ)
   console.log("📝 สร้างปัญหา 100 รายการ...");
+  // Matches enum ProblemStatus in schema.prisma
   const statuses = [
-    "กำลังส่งเรื่อง",
-    "กำลังส่งเรื่อง",
-    "กำลังส่งเรื่อง",
-    "ได้รับการแก้ปัญหาแล้ว",
-    "การแจ้งปัญหาถูกปฏิเสธ",
+    "PENDING",
+    "PENDING",
+    "IN_PROGRESS",
+    "RESOLVED",
+    "CLOSED",
   ];
+  // Matches enum ProblemType in schema.prisma
+  const problemTypeEnums = ["ACADEMIC", "FACILITY", "ADMINISTRATIVE", "OTHER"];
 
   for (let i = 0; i < 100; i++) {
     const template = problemTemplates[i % problemTemplates.length];
     const stuId = studentIds[i % studentIds.length];
     const lectId = lecturerIds[i % lecturerIds.length];
-    const proType = problemTypes[i % problemTypes.length];
+    const proType = problemTypeEnums[i % problemTypeEnums.length];
     const status = statuses[i % statuses.length];
 
     // สุ่ม tags 1-3 อัน
@@ -210,19 +215,19 @@ async function main() {
 
     // วันที่ย้อนหลัง 0-180 วัน
     const daysAgo = i * 1.8;
-    const datetime = new Date();
-    datetime.setDate(datetime.getDate() - Math.floor(daysAgo));
+    const createAt = new Date();
+    createAt.setDate(createAt.getDate() - Math.floor(daysAgo));
 
-    await prisma.Problem.create({
+    await prisma.problem.create({
       data: {
         pro_title: `${template.title} (${i + 1})`,
         pro_type: proType,
         pro_desc: template.desc,
         pro_images: "",
         status,
-        datetime,
-        stu: { connect: { id: stuId } },
-        lect_id: { connect: [{ id: lectId }] },
+        create_at: createAt,
+        student: { connect: { id: stuId } },
+        lecturer: { connect: { id: lectId } },
         tags: { connect: connectTags },
       },
     });

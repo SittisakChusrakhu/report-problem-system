@@ -20,13 +20,18 @@ export default function BasicCard() {
   const onLogin = () => {
     Api.post("/login", data)
       .then((res) => {
-        localStorage.setItem("Logged", res.data);
-        localStorage.setItem("rid", res.data.id);
-        if (res.data.stu_id) {
+        // Backend now returns { token, user: profile } instead of the
+        // profile object directly, and every protected endpoint requires
+        // that token in an Authorization header — so it has to be saved.
+        const { token, user } = res.data;
+        localStorage.setItem("token", token);
+        localStorage.setItem("Logged", JSON.stringify(user));
+        localStorage.setItem("rid", user.id);
+        if (user.stu_id) {
           router.push("/stu_home");
-        } else if (res.data.lect_roomnum) {
+        } else if (user.lect_roomnum !== undefined) {
           router.push("/lect_home");
-        } else if (res.data.role_id === 3) {
+        } else if (user.role_id === 3) {
           router.push("/admin");
         } else {
           alert("ไม่พบข้อมูลที่เหมาะสม");
@@ -158,7 +163,7 @@ export default function BasicCard() {
             onChange={handleData}
             type="password"
             fullWidth
-            sx={{ mb: 3.5 }}
+            sx={{ mb: 1 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -167,6 +172,16 @@ export default function BasicCard() {
               ),
             }}
           />
+
+          <Typography variant="body2" sx={{ mb: 3.5, textAlign: "right" }}>
+            <Box
+              component="a"
+              href="/forgot-password"
+              sx={{ color: "primary.main", fontWeight: 600 }}
+            >
+              ลืมรหัสผ่าน?
+            </Box>
+          </Typography>
 
           <Button
             variant="contained"

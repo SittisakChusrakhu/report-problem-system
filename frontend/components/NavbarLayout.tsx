@@ -42,6 +42,8 @@ export default function ResponsiveDrawer(props: Props) {
 
     const onlogout = () => {
         localStorage.removeItem("Logged");
+        localStorage.removeItem("token");
+        localStorage.removeItem("rid");
         router.push("/");
     };
 

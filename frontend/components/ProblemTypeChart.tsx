@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import axios from "axios";
+import { Api } from "../pages/api/api";
 import { Chart, ChartConfiguration } from "chart.js";
 import { FormControl, InputLabel, MenuItem, Select } from "@mui/material";
+import { getStatusBucket, getStatusLabel, getProblemTypeLabel } from "../lib/problemStatus";
 
 interface Props {}
 
@@ -11,10 +12,9 @@ interface Problem {
   pro_type: string;
   pro_desc: string;
   pro_image: string;
-  lect_id: string;
+  lecturerId: number | null;
   sid: string;
-  datetime: string;
-  course?: string;
+  create_at: string;
   status?: string;
   tag?: string;
 }
@@ -34,9 +34,7 @@ const ProblemTypeChart: React.FC<Props> = () => {
   const fetchData = async () => {
     try {
       const lid = localStorage.getItem("rid");
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/user/problem/?lid=${lid}`
-      );
+      const response = await Api.get(`/user/problem/?lid=${lid}`);
       const problemData: Problem[] = response.data;
       updateChart(problemData);
     } catch (error) {
@@ -48,13 +46,13 @@ const ProblemTypeChart: React.FC<Props> = () => {
     const newData: DataState = {};
     if (selectedFunction === "status") {
       const successCount = problemData.filter(
-        (problem) => problem.status === "ได้รับการแก้ปัญหาแล้ว"
+        (problem) => getStatusBucket(problem.status || "") === "resolved"
       ).length;
       const rejectedCount = problemData.filter(
-        (problem) => problem.status === "การแจ้งปัญหาถูกปฏิเสธ"
+        (problem) => getStatusBucket(problem.status || "") === "closed"
       ).length;
       const sendingCount = problemData.filter(
-        (problem) => problem.status === "กำลังส่งเรื่อง"
+        (problem) => getStatusBucket(problem.status || "") === "inProgress"
       ).length;
 
       const totalCount = successCount + rejectedCount + sendingCount;
@@ -64,7 +62,7 @@ const ProblemTypeChart: React.FC<Props> = () => {
     } else if (selectedFunction === "pro_type") {
       const problemCountByType: DataState = problemData.reduce(
         (count: DataState, problem) => {
-          const type = problem.pro_type;
+          const type = getProblemTypeLabel(problem.pro_type);
           count[type] = (count[type] || 0) + 1;
           return count;
         },
@@ -105,7 +103,7 @@ const ProblemTypeChart: React.FC<Props> = () => {
           data: {
             labels:
               selectedFunction === "status"
-                ? ["ได้รับการแก้ปัญหาแล้ว", "กำลังส่งเรื่อง", "การแจ้งปัญหาถูกปฏิเสธ"]
+                ? [getStatusLabel("RESOLVED"), "อยู่ระหว่างดำเนินการ", getStatusLabel("CLOSED")]
                 : Object.keys(data),
             datasets: [
               {
