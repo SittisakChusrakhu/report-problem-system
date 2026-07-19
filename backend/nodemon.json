@@ -1,0 +1,6 @@
+{
+  "watch": ["controllers", "services", "repositories", "routes", "middleware", "prisma", "src"],
+  "ext": "js,json",
+  "ignore": ["node_modules"],
+  "delay": "500"
+}

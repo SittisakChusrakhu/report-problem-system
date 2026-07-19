@@ -41,6 +41,13 @@ export default function LecturerComponent() {
     }, []);
 
     React.useEffect(() => {
+        // rid starts at 0 until the effect above loads it from
+        // localStorage. Without this guard, this effect fires once with
+        // id=0 first (no lecturer matches, response.data[0] is undefined,
+        // .username throws inside .then and gets silently swallowed by
+        // .catch) before firing again correctly once rid updates.
+        if (!rid) return;
+
         Api
             .get<any[]>(`/lecturer?id=${rid}`)
             .then(function (response) {

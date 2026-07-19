@@ -44,7 +44,7 @@ const THEME = createTheme({
       main: "#E0524A",
     },
     background: {
-      default: "#F4F7F6",
+      default: "#E3EEEA",
       paper: "#FFFFFF",
     },
     text: {
@@ -56,7 +56,7 @@ const THEME = createTheme({
     MuiCssBaseline: {
       styleOverrides: {
         body: {
-          backgroundColor: "#F4F7F6",
+          backgroundColor: "#E3EEEA",
         },
       },
     },

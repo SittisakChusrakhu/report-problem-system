@@ -18,6 +18,7 @@ import {
   Divider,
 } from "@mui/material";
 import React, { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import NavbarStu from "../components/NavbarStu";
 import axios from "axios";
 import { Api } from "./api/api";
@@ -40,6 +41,8 @@ const MenuProps = {
 };
 
 export default function CreateProblemPage() {
+  const router = useRouter();
+
   interface Tag {
     id: number;
     name: string;
@@ -118,7 +121,7 @@ export default function CreateProblemPage() {
       if (res.data) {
         toast.success("คุณส่งรายงานปัญหาแล้ว", {
           position: "top-center",
-          autoClose: 2500,
+          autoClose: 2000,
           hideProgressBar: false,
           closeOnClick: true,
           pauseOnHover: true,
@@ -126,7 +129,15 @@ export default function CreateProblemPage() {
           progress: undefined,
           theme: "colored",
         });
-        //setTimeout(location.reload.bind(location), 3000);
+        // Previously the page just sat there with the old values still
+        // filled in (the commented-out location.reload below was the
+        // original attempt to fix that, but a hard reload throws away the
+        // toast too). Navigating to the report list instead: it lands on a
+        // fresh page mount (form fully reset) and shows the newly created
+        // report immediately.
+        setTimeout(() => {
+          router.push("/stu_listreport");
+        }, 1200);
       }
     } catch (error: any) {
       toast.error(
@@ -340,6 +351,7 @@ export default function CreateProblemPage() {
               label="รายละเอียด"
               id="pro_desc"
               name="pro_desc"
+              value={problem.pro_desc}
               onChange={handleChangeproblem}
               multiline
               fullWidth

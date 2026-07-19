@@ -52,9 +52,7 @@ export default function ListReport() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [userData, setUserData] = useState<any[]>([]);
   const [studentData, setStudentData] = useState<any[]>([]);
-  const [userNames, setUserNames] = useState<{ [key: string]: string }>({});
   const [filteredData, setFilteredData] = useState<Problem[]>([]);
   const [feedbackList, setFeedbackList] = useState<Feedback[]>([]);
   const [replyText, setReplyText] = useState("");
@@ -90,14 +88,10 @@ export default function ListReport() {
     // โดยไม่ต้องกดรีเฟรชหน้าเอง
     const interval = setInterval(fetchProblems, 15000);
 
-    Api.get("/user/all")
-      .then((response: any) => {
-        setUserData(response.data);
-      })
-      .catch((error) => {
-        console.log(error);
-      });
-
+    // NOTE: เดิมมีการเรียก /user/all เพิ่มเพื่อ join หาชื่อนักศึกษา แต่
+    // /user/all เป็น endpoint สำหรับแอดมินเท่านั้น (requireRole(3)) —
+    // อาจารย์เรียกไม่ได้อยู่แล้วโดยตั้งใจ (คืนอีเมลของทุกคนในระบบมาด้วย)
+    // /student/all ด้านล่างมี username แนบมาให้ในตัวอยู่แล้ว ไม่ต้อง join เพิ่ม
     Api.get("/student/all")
       .then((response: any) => {
         setStudentData(response.data);
@@ -108,24 +102,6 @@ export default function ListReport() {
 
     return () => clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    const studentUidMap: { [key: string]: string } = {};
-
-    studentData.forEach((student: any) => {
-      studentUidMap[student.sid] = student.uid;
-    });
-
-    const userNamesMap: { [key: string]: string } = {};
-
-    userData.forEach((user) => {
-      if (studentUidMap[user.uid]) {
-        userNamesMap[studentUidMap[user.uid]] = user.user_name;
-      }
-    });
-
-    setUserNames(userNamesMap);
-  }, [studentData, userData]);
 
   const handleDeleteSearch = () => {
     setSearchTerm("");
@@ -316,10 +292,7 @@ export default function ListReport() {
                     const student = studentData.find(
                       (student) => student.id === problem.sid
                     );
-                    const user = userData.find(
-                      (user) => user.id === student?.uid
-                    );
-                    const userName = user?.user_name || "-";
+                    const userName = student?.username || "-";
 
                     return (
                       <TableRow key={problem.id} hover>

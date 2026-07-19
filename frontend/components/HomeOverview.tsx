@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
-import Head from "next/head";
 import { Box, Button, Card, Chip, Skeleton, Stack, Typography } from "@mui/material";
 import {
     AddRounded,
@@ -25,13 +24,9 @@ const INK = "#1E2A28";
 const SUB = "#5B6B68";
 const PAPER = "#E3EEEA";
 const PAPER_WASH = "rgba(47,114,104,0.08)";
-const CARD = "#FFFFFF";
 const HAIRLINE = "rgba(31,79,73,0.10)";
 const BRAND = "#2F7268";
 const BRAND_DARK = "#1F4F49";
-
-const DISPLAY_FONT = "'Bai Jamjuree', 'IBM Plex Sans Thai', sans-serif";
-const BODY_FONT = "'IBM Plex Sans Thai', 'Bai Jamjuree', sans-serif";
 
 const TAG_PALETTE = [BRAND, "#E08D79", "#4C8FA0", "#7B8FA6", "#E3A857", "#B7A66F"];
 
@@ -82,21 +77,17 @@ function timeAgo(dateStr: string) {
 function StatPill({ value, label, tint }: { value: string; label: string; tint: string }) {
     return (
         <Card
-            elevation={0}
             sx={{
                 p: 2,
-                borderRadius: 3,
-                border: `1px solid ${HAIRLINE}`,
-                backgroundColor: CARD,
                 flex: "1 1 150px",
                 minWidth: 150,
                 borderLeft: `3px solid ${tint}`,
             }}
         >
-            <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 26, color: INK, lineHeight: 1.1 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: 26, color: INK, lineHeight: 1.1 }}>
                 {value}
             </Typography>
-            <Typography sx={{ fontFamily: BODY_FONT, fontSize: 12.5, color: SUB, mt: 0.5 }}>{label}</Typography>
+            <Typography sx={{ fontSize: 12.5, color: SUB, mt: 0.5 }}>{label}</Typography>
         </Card>
     );
 }
@@ -114,13 +105,9 @@ function QuickActionCard({
 }) {
     return (
         <Card
-            elevation={0}
             onClick={() => onClick(href)}
             sx={{
                 p: 2,
-                borderRadius: 3,
-                border: `1px solid ${HAIRLINE}`,
-                backgroundColor: CARD,
                 flex: "1 1 160px",
                 minWidth: 160,
                 display: "flex",
@@ -145,7 +132,7 @@ function QuickActionCard({
             >
                 {icon}
             </Box>
-            <Typography sx={{ fontFamily: BODY_FONT, fontWeight: 600, fontSize: 13.5, color: INK }}>
+            <Typography sx={{ fontWeight: 600, fontSize: 13.5, color: INK }}>
                 {label}
             </Typography>
         </Card>
@@ -168,23 +155,40 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
 
     useEffect(() => {
         let cancelled = false;
-        setLoading(true);
-        setError(null);
-        Promise.all([Api.get<Problem[]>("/user/problem"), Api.get<Tag[]>("/tags")])
-            .then(([problemRes, tagRes]) => {
-                if (cancelled) return;
-                const problemData = Array.isArray(problemRes.data) ? problemRes.data : [];
-                tagOrderRef.current = Array.isArray(tagRes.data) ? tagRes.data.map((t) => t.name) : [];
-                setProblems(problemData);
-            })
-            .catch(() => {
-                if (!cancelled) setError("โหลดข้อมูลไม่สำเร็จ ลองรีเฟรชหน้านี้อีกครั้ง");
-            })
-            .finally(() => {
-                if (!cancelled) setLoading(false);
-            });
+
+        const loadData = (showSpinner: boolean) => {
+            if (showSpinner) setLoading(true);
+            setError(null);
+            Promise.all([Api.get<Problem[]>("/user/problem"), Api.get<Tag[]>("/tags")])
+                .then(([problemRes, tagRes]) => {
+                    if (cancelled) return;
+                    const problemData = Array.isArray(problemRes.data) ? problemRes.data : [];
+                    tagOrderRef.current = Array.isArray(tagRes.data) ? tagRes.data.map((t) => t.name) : [];
+                    setProblems(problemData);
+                })
+                .catch(() => {
+                    if (!cancelled) setError("โหลดข้อมูลไม่สำเร็จ ลองรีเฟรชหน้านี้อีกครั้ง");
+                })
+                .finally(() => {
+                    if (!cancelled && showSpinner) setLoading(false);
+                });
+        };
+
+        loadData(true);
+
+        // Keep the snapshot current without the user manually reloading:
+        // poll in the background, and refetch immediately when the tab
+        // regains focus (e.g. switching back after submitting a report).
+        // Silent refetches (showSpinner=false) skip the loading skeleton
+        // so the page doesn't flicker every 30s.
+        const intervalId = setInterval(() => loadData(false), 30000);
+        const onFocus = () => loadData(false);
+        window.addEventListener("focus", onFocus);
+
         return () => {
             cancelled = true;
+            clearInterval(intervalId);
+            window.removeEventListener("focus", onFocus);
         };
     }, []);
 
@@ -231,12 +235,12 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
             ? {
                   subtitle: "ภาพรวมปัญหาที่นักศึกษาพบบ่อยที่สุดในระบบตอนนี้",
                   ctaLabel: "แจ้งปัญหาใหม่",
-                  ctaHref: "/add-report",
+                  ctaHref: "/stu_report",
                   browseLabel: "ดูรายงานทั้งหมด",
                   browseHref: "/stu_listreport",
                   statLabels: { total: "ปัญหาที่แจ้งไปแล้ว", open: "กำลังรอดำเนินการ", rate: "อัตราแก้ไขสำเร็จ" },
                   quickActions: [
-                      { label: "แจ้งปัญหาใหม่", href: "/add-report", icon: <AddCircleOutline sx={{ fontSize: 20 }} /> },
+                      { label: "แจ้งปัญหาใหม่", href: "/stu_report", icon: <AddCircleOutline sx={{ fontSize: 20 }} /> },
                       { label: "ดูรายงานของฉัน", href: "/stu_listreport", icon: <ListAltOutlined sx={{ fontSize: 20 }} /> },
                       { label: "แก้ไขข้อมูลส่วนตัว", href: "/stu_edit", icon: <EditOutlined sx={{ fontSize: 20 }} /> },
                   ],
@@ -257,20 +261,11 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
 
     return (
         <Box sx={{ minHeight: "100vh", backgroundColor: PAPER }}>
-            <Head>
-                <link rel="preconnect" href="https://fonts.googleapis.com" />
-                <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-                <link
-                    href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap"
-                    rel="stylesheet"
-                />
-            </Head>
             {navbar}
             <Box
                 component="main"
                 sx={{
                     ml: { sm: "260px" },
-                    mt: "64px",
                     p: { xs: 2, sm: 4 },
                     background: `radial-gradient(1100px 320px at 15% -10%, ${PAPER_WASH}, transparent 65%)`,
                 }}
@@ -283,10 +278,10 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                     sx={{ mb: 3 }}
                 >
                     <Box>
-                        <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 22, color: INK }}>
+                        <Typography sx={{ fontWeight: 700, fontSize: 22, color: INK }}>
                             {getGreeting()} 👋
                         </Typography>
-                        <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13.5, color: SUB, mt: 0.5 }}>
+                        <Typography sx={{ fontSize: 13.5, color: SUB, mt: 0.5 }}>
                             {copy.subtitle}
                         </Typography>
                     </Box>
@@ -294,7 +289,6 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                         onClick={() => router.push(copy.ctaHref)}
                         endIcon={role === "student" ? <AddRounded /> : <ArrowForwardRounded />}
                         sx={{
-                            fontFamily: BODY_FONT,
                             fontWeight: 600,
                             fontSize: 13.5,
                             textTransform: "none",
@@ -312,11 +306,10 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
 
                 {error && (
                     <Card
-                        elevation={0}
-                        sx={{ p: 2, mb: 3, borderRadius: 3, border: `1px solid ${HAIRLINE}`, display: "flex", alignItems: "center", gap: 1.5 }}
+                        sx={{ p: 2, mb: 3, display: "flex", alignItems: "center", gap: 1.5 }}
                     >
                         <ErrorOutlineRounded sx={{ color: "#C0553F" }} />
-                        <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13.5, color: INK }}>{error}</Typography>
+                        <Typography sx={{ fontSize: 13.5, color: INK }}>{error}</Typography>
                     </Card>
                 )}
 
@@ -358,21 +351,21 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                         {/* Trending tags */}
                         <Box>
                             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-                                <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: 16, color: INK }}>
+                                <Typography sx={{ fontWeight: 600, fontSize: 16, color: INK }}>
                                     หัวข้อที่พบบ่อย
                                 </Typography>
                                 <Button
                                     onClick={() => router.push(copy.browseHref)}
                                     endIcon={<ArrowForwardRounded sx={{ fontSize: 16 }} />}
-                                    sx={{ fontFamily: BODY_FONT, fontSize: 13, textTransform: "none", color: BRAND, fontWeight: 600 }}
+                                    sx={{ fontSize: 13, textTransform: "none", color: BRAND, fontWeight: 600 }}
                                 >
                                     {copy.browseLabel}
                                 </Button>
                             </Stack>
 
                             {trending.length === 0 ? (
-                                <Card elevation={0} sx={{ p: 4, borderRadius: 3, border: `1px solid ${HAIRLINE}`, textAlign: "center" }}>
-                                    <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13.5, color: SUB }}>
+                                <Card sx={{ p: 4, textAlign: "center" }}>
+                                    <Typography sx={{ fontSize: 13.5, color: SUB }}>
                                         ยังไม่มีปัญหาที่ติดแท็กในระบบ
                                     </Typography>
                                 </Card>
@@ -381,14 +374,10 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                                     {trending.map((t) => (
                                         <Card
                                             key={t.name}
-                                            elevation={0}
                                             sx={{
                                                 p: 2.25,
                                                 flex: 1,
                                                 minWidth: 0,
-                                                borderRadius: 3,
-                                                border: `1px solid ${HAIRLINE}`,
-                                                backgroundColor: CARD,
                                                 transition: "box-shadow 0.2s ease, transform 0.2s ease",
                                                 "&:hover": { boxShadow: "0 8px 24px rgba(31,79,73,0.10)", transform: "translateY(-2px)" },
                                             }}
@@ -398,20 +387,18 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                                                     icon={<LocalOfferOutlined sx={{ fontSize: 15, color: `${t.color} !important` }} />}
                                                     label={t.name}
                                                     sx={{
-                                                        fontFamily: BODY_FONT,
                                                         fontWeight: 600,
                                                         fontSize: 12.5,
                                                         backgroundColor: `${t.color}1A`,
                                                         color: t.color,
                                                     }}
                                                 />
-                                                <Typography sx={{ fontFamily: BODY_FONT, fontSize: 12, color: SUB }}>
+                                                <Typography sx={{ fontSize: 12, color: SUB }}>
                                                     {t.count} รายการ
                                                 </Typography>
                                             </Stack>
                                             <Typography
                                                 sx={{
-                                                    fontFamily: DISPLAY_FONT,
                                                     fontWeight: 600,
                                                     fontSize: 14.5,
                                                     color: INK,
@@ -426,7 +413,6 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                                             </Typography>
                                             <Typography
                                                 sx={{
-                                                    fontFamily: BODY_FONT,
                                                     fontSize: 12.5,
                                                     color: SUB,
                                                     mb: 1.5,
@@ -442,7 +428,6 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                                                 size="small"
                                                 label={STATUS_META[t.sample.status]?.label ?? t.sample.status}
                                                 sx={{
-                                                    fontFamily: BODY_FONT,
                                                     fontSize: 11.5,
                                                     fontWeight: 600,
                                                     backgroundColor: `${STATUS_META[t.sample.status]?.color ?? SUB}1A`,
@@ -457,18 +442,18 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
 
                         {/* Recent activity */}
                         <Box>
-                            <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: 16, color: INK, mb: 1.5 }}>
+                            <Typography sx={{ fontWeight: 600, fontSize: 16, color: INK, mb: 1.5 }}>
                                 กิจกรรมล่าสุด
                             </Typography>
 
                             {recentActivity.length === 0 ? (
-                                <Card elevation={0} sx={{ p: 4, borderRadius: 3, border: `1px solid ${HAIRLINE}`, textAlign: "center" }}>
-                                    <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13.5, color: SUB }}>
+                                <Card sx={{ p: 4, textAlign: "center" }}>
+                                    <Typography sx={{ fontSize: 13.5, color: SUB }}>
                                         ยังไม่มีปัญหาในระบบ
                                     </Typography>
                                 </Card>
                             ) : (
-                                <Card elevation={0} sx={{ borderRadius: 3, border: `1px solid ${HAIRLINE}`, backgroundColor: CARD, overflow: "hidden" }}>
+                                <Card sx={{ overflow: "hidden" }}>
                                     {recentActivity.map((p, i) => (
                                         <Stack
                                             key={p.id}
@@ -492,7 +477,6 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                                             />
                                             <Typography
                                                 sx={{
-                                                    fontFamily: BODY_FONT,
                                                     fontSize: 13.5,
                                                     color: INK,
                                                     flex: 1,
@@ -508,7 +492,6 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                                                 size="small"
                                                 label={STATUS_META[p.status]?.label ?? p.status}
                                                 sx={{
-                                                    fontFamily: BODY_FONT,
                                                     fontSize: 11,
                                                     fontWeight: 600,
                                                     backgroundColor: `${STATUS_META[p.status]?.color ?? SUB}1A`,
@@ -518,7 +501,7 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                                             />
                                             <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexShrink: 0, minWidth: 96, justifyContent: "flex-end" }}>
                                                 <ScheduleOutlined sx={{ fontSize: 14, color: SUB }} />
-                                                <Typography sx={{ fontFamily: BODY_FONT, fontSize: 12, color: SUB, whiteSpace: "nowrap" }}>
+                                                <Typography sx={{ fontSize: 12, color: SUB, whiteSpace: "nowrap" }}>
                                                     {timeAgo(p.create_at)}
                                                 </Typography>
                                             </Stack>
@@ -533,4 +516,3 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
         </Box>
     );
 }
-

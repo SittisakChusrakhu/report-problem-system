@@ -102,3 +102,5 @@ exports.clearAll = async (req, res) => {
       .json({ message: "เกิดข้อผิดพลาดในการล้างการแจ้งเตือน" });
   }
 };
+
+// test auto-reload

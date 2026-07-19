@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import Head from "next/head";
 import { Box, Card, Chip, Stack, Typography, Skeleton } from "@mui/material";
 import {
     Inventory2Outlined,
@@ -33,13 +32,9 @@ import { Api } from "./api/api";
 const INK = "#1E2A28";
 const SUB = "#5B6B68";
 const PAPER = "#E3EEEA";
-const CARD = "#FFFFFF";
 const HAIRLINE = "rgba(31,79,73,0.10)";
 const BRAND = "#2F7268";
 const BRAND_DARK = "#1F4F49";
-
-const DISPLAY_FONT = "'Bai Jamjuree', 'IBM Plex Sans Thai', sans-serif";
-const BODY_FONT = "'IBM Plex Sans Thai', 'Bai Jamjuree', sans-serif";
 
 // ---------------------------------------------------------------------------
 // Domain types (mirrors schema.prisma)
@@ -121,20 +116,16 @@ const CLOSED_LIKE: Status[] = ["RESOLVED", "CLOSED"];
 function SectionCard({ title, caption, children }: { title: string; caption?: string; children: React.ReactNode }) {
     return (
         <Card
-            elevation={0}
             sx={{
                 p: { xs: 2, sm: 3 },
-                borderRadius: 3,
-                border: `1px solid ${HAIRLINE}`,
-                backgroundColor: CARD,
                 height: "100%",
             }}
         >
-            <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: 16, color: INK }}>
+            <Typography sx={{ fontWeight: 600, fontSize: 16, color: INK }}>
                 {title}
             </Typography>
             {caption && (
-                <Typography sx={{ fontFamily: BODY_FONT, fontSize: 12.5, color: SUB, mt: 0.25, mb: 2 }}>
+                <Typography sx={{ fontSize: 12.5, color: SUB, mt: 0.25, mb: 2 }}>
                     {caption}
                 </Typography>
             )}
@@ -157,12 +148,8 @@ function StatCard({
 }) {
     return (
         <Card
-            elevation={0}
             sx={{
                 p: 2.25,
-                borderRadius: 3,
-                border: `1px solid ${HAIRLINE}`,
-                backgroundColor: CARD,
                 display: "flex",
                 alignItems: "center",
                 gap: 1.75,
@@ -185,10 +172,10 @@ function StatCard({
                 {icon}
             </Box>
             <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 24, color: INK, lineHeight: 1.1 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: 24, color: INK, lineHeight: 1.1 }}>
                     {value}
                 </Typography>
-                <Typography sx={{ fontFamily: BODY_FONT, fontSize: 12.5, color: SUB, mt: 0.25 }}>
+                <Typography sx={{ fontSize: 12.5, color: SUB, mt: 0.25 }}>
                     {label}
                 </Typography>
             </Box>
@@ -231,10 +218,10 @@ function PipelineFlow({ counts, total }: { counts: Record<Status, number>; total
                 {STATUS_ORDER.map((s) => (
                     <Stack key={s} direction="row" alignItems="center" spacing={1}>
                         <Box sx={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: STATUS_META[s].color }} />
-                        <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13, color: INK }}>
+                        <Typography sx={{ fontSize: 13, color: INK }}>
                             {STATUS_META[s].label}
                         </Typography>
-                        <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13, color: SUB, fontWeight: 600 }}>
+                        <Typography sx={{ fontSize: 13, color: SUB, fontWeight: 600 }}>
                             {counts[s]}
                         </Typography>
                     </Stack>
@@ -254,7 +241,6 @@ function CustomTooltip({ active, payload, label }: any) {
                 borderRadius: 1.5,
                 px: 1.5,
                 py: 1,
-                fontFamily: BODY_FONT,
                 fontSize: 12.5,
             }}
         >
@@ -280,22 +266,34 @@ export default function Graph() {
 
     useEffect(() => {
         let cancelled = false;
-        setLoading(true);
-        setError(null);
-        Api.get<ProblemRecord[] | { problems: ProblemRecord[] }>("/user/problem")
-            .then((res) => {
-                if (cancelled) return;
-                const data = Array.isArray(res.data) ? res.data : res.data?.problems ?? [];
-                setProblems(data);
-            })
-            .catch(() => {
-                if (!cancelled) setError("โหลดข้อมูลไม่สำเร็จ ลองรีเฟรชหน้านี้อีกครั้ง");
-            })
-            .finally(() => {
-                if (!cancelled) setLoading(false);
-            });
+
+        const loadData = (showSpinner: boolean) => {
+            if (showSpinner) setLoading(true);
+            setError(null);
+            Api.get<ProblemRecord[] | { problems: ProblemRecord[] }>("/user/problem")
+                .then((res) => {
+                    if (cancelled) return;
+                    const data = Array.isArray(res.data) ? res.data : res.data?.problems ?? [];
+                    setProblems(data);
+                })
+                .catch(() => {
+                    if (!cancelled) setError("โหลดข้อมูลไม่สำเร็จ ลองรีเฟรชหน้านี้อีกครั้ง");
+                })
+                .finally(() => {
+                    if (!cancelled && showSpinner) setLoading(false);
+                });
+        };
+
+        loadData(true);
+
+        const intervalId = setInterval(() => loadData(false), 30000);
+        const onFocus = () => loadData(false);
+        window.addEventListener("focus", onFocus);
+
         return () => {
             cancelled = true;
+            clearInterval(intervalId);
+            window.removeEventListener("focus", onFocus);
         };
     }, []);
 
@@ -350,22 +348,14 @@ export default function Graph() {
 
     return (
         <Box sx={{ minHeight: "100vh", backgroundColor: PAPER }}>
-            <Head>
-                <link rel="preconnect" href="https://fonts.googleapis.com" />
-                <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-                <link
-                    href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap"
-                    rel="stylesheet"
-                />
-            </Head>
             <NavbarLect />
-            <Box component="main" sx={{ ml: { sm: "260px" }, mt: "64px", p: { xs: 2, sm: 4 } }}>
+            <Box component="main" sx={{ ml: { sm: "260px" }, p: { xs: 2, sm: 4 } }}>
                 <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "flex-end" }} spacing={2} sx={{ mb: 3 }}>
                     <Box>
-                        <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 700, fontSize: 22, color: INK }}>
+                        <Typography sx={{ fontWeight: 700, fontSize: 22, color: INK }}>
                             สรุปรายงานทั้งหมดของนักศึกษา
                         </Typography>
-                        <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13.5, color: SUB, mt: 0.5 }}>
+                        <Typography sx={{ fontSize: 13.5, color: SUB, mt: 0.5 }}>
                             ภาพรวมแนวโน้มและสถานะการแจ้งปัญหา
                         </Typography>
                     </Box>
@@ -376,7 +366,6 @@ export default function Graph() {
                                 label={opt.label}
                                 onClick={() => setRange(opt.key)}
                                 sx={{
-                                    fontFamily: BODY_FONT,
                                     fontWeight: 600,
                                     fontSize: 13,
                                     backgroundColor: range === opt.key ? BRAND : "transparent",
@@ -391,11 +380,10 @@ export default function Graph() {
 
                 {error && (
                     <Card
-                        elevation={0}
-                        sx={{ p: 2, mb: 3, borderRadius: 3, border: `1px solid ${HAIRLINE}`, display: "flex", alignItems: "center", gap: 1.5 }}
+                        sx={{ p: 2, mb: 3, display: "flex", alignItems: "center", gap: 1.5 }}
                     >
                         <ErrorOutlineRounded sx={{ color: "#C0553F" }} />
-                        <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13.5, color: INK }}>{error}</Typography>
+                        <Typography sx={{ fontSize: 13.5, color: INK }}>{error}</Typography>
                     </Card>
                 )}
 
@@ -413,11 +401,11 @@ export default function Graph() {
                         </Stack>
                     </Stack>
                 ) : total === 0 ? (
-                    <Card elevation={0} sx={{ p: 5, borderRadius: 3, border: `1px solid ${HAIRLINE}`, textAlign: "center" }}>
-                        <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: 16, color: INK }}>
+                    <Card sx={{ p: 5, textAlign: "center" }}>
+                        <Typography sx={{ fontWeight: 600, fontSize: 16, color: INK }}>
                             ยังไม่มีข้อมูลในช่วงเวลานี้
                         </Typography>
-                        <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13.5, color: SUB, mt: 0.5 }}>
+                        <Typography sx={{ fontSize: 13.5, color: SUB, mt: 0.5 }}>
                             ลองเปลี่ยนช่วงเวลาเป็น "ทั้งหมด" เพื่อดูรายงานย้อนหลัง
                         </Typography>
                     </Card>
@@ -457,10 +445,10 @@ export default function Graph() {
                                             {typeData.map((d) => (
                                                 <Stack key={d.key} direction="row" alignItems="center" spacing={1}>
                                                     <Box sx={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: d.color, flexShrink: 0 }} />
-                                                    <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13, color: INK, whiteSpace: "nowrap" }}>
+                                                    <Typography sx={{ fontSize: 13, color: INK, whiteSpace: "nowrap" }}>
                                                         {d.name}
                                                     </Typography>
-                                                    <Typography sx={{ fontFamily: BODY_FONT, fontSize: 13, color: SUB, fontWeight: 600 }}>
+                                                    <Typography sx={{ fontSize: 13, color: SUB, fontWeight: 600 }}>
                                                         {d.value}
                                                     </Typography>
                                                 </Stack>
@@ -486,8 +474,8 @@ export default function Graph() {
                                                     </linearGradient>
                                                 </defs>
                                                 <CartesianGrid vertical={false} stroke={HAIRLINE} />
-                                                <XAxis dataKey="label" tick={{ fontFamily: BODY_FONT, fontSize: 11, fill: SUB }} axisLine={false} tickLine={false} />
-                                                <YAxis tick={{ fontFamily: BODY_FONT, fontSize: 11, fill: SUB }} axisLine={false} tickLine={false} allowDecimals={false} />
+                                                <XAxis dataKey="label" tick={{ fontSize: 11, fill: SUB }} axisLine={false} tickLine={false} />
+                                                <YAxis tick={{ fontSize: 11, fill: SUB }} axisLine={false} tickLine={false} allowDecimals={false} />
                                                 <Tooltip content={<CustomTooltip />} />
                                                 <Area type="monotone" dataKey="closed" name="ปิดแล้ว" stackId="1" stroke={BRAND} fill="url(#closedFill)" strokeWidth={2} />
                                                 <Area type="monotone" dataKey="open" name="เปิดอยู่" stackId="1" stroke="#E3A857" fill="url(#openFill)" strokeWidth={2} />
@@ -509,13 +497,13 @@ export default function Graph() {
                                                 type="category"
                                                 dataKey="name"
                                                 width={110}
-                                                tick={{ fontFamily: BODY_FONT, fontSize: 12.5, fill: INK }}
+                                                tick={{ fontSize: 12.5, fill: INK }}
                                                 axisLine={false}
                                                 tickLine={false}
                                             />
                                             <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(47,114,104,0.06)" }} />
                                             <Bar dataKey="value" name="จำนวน" fill={BRAND} radius={[0, 6, 6, 0]} barSize={16}>
-                                                <LabelList dataKey="value" position="right" style={{ fontFamily: BODY_FONT, fontSize: 12, fill: INK }} />
+                                                <LabelList dataKey="value" position="right" style={{ fontSize: 12, fill: INK }} />
                                             </Bar>
                                         </BarChart>
                                     </ResponsiveContainer>
