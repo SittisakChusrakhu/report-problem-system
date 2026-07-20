@@ -44,14 +44,20 @@ exports.createProblem = async (body) => {
       lecturerId
     );
 
-    if (lecturer) {
-      await mailer.sendProblemNotification({
-        to: lecturer.user.user_email,
-        studentName: student.user.user_name,
-        pro_title,
-        pro_desc,
-        pro_image,
-      });
+   if (lecturer) {
+      // ห่อ try/catch กัน mail server ล่ม (เช่น SMTP timeout) แล้วดึงทั้ง
+      // request พังไปด้วย — ควรให้ปัญหาถูกสร้างสำเร็จเสมอ ต่อให้ส่งเมลไม่ได้
+      try {
+        await mailer.sendProblemNotification({
+          to: lecturer.user.user_email,
+          studentName: student.user.user_name,
+          pro_title,
+          pro_desc,
+          pro_image,
+        });
+      } catch (error) {
+        console.error("ส่งอีเมลแจ้งอาจารย์ไม่สำเร็จ:", error);
+      }
     }
 
     // แจ้งเตือนอาจารย์ (กระดิ่งฝั่งอาจารย์) ว่ามีนักศึกษาแจ้งปัญหาใหม่เข้ามา
