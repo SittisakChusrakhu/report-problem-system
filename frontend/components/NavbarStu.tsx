@@ -121,7 +121,7 @@ export default function ResponsiveDrawer(props: Props) {
                         หน้าหลัก
                     </Typography>
                     <Box sx={{ flexGrow: 1 }} />
-                    <NotificationBell />
+                    <NotificationBell role="student" />
                     <Box sx={{ display: "flex", alignItems: "center", ml: 1.5, gap: 1 }}>
                         <Avatar sx={{ width: 32, height: 32, bgcolor: "primary.main", fontSize: 14 }}>S</Avatar>
                         <Typography variant="body2" noWrap sx={{ display: { xs: "none", sm: "block" } }}>
