@@ -28,7 +28,7 @@ const navItems = [
     { href: "/admin", label: "หน้าหลัก", icon: <Home /> },
     { href: "/add-uesr", label: "จัดการผู้ใช้งาน", icon: <AddCircleOutline /> },
     { href: "/add-report", label: "เพิ่ม Topic เรื่องปัญหาการเรียน", icon: <Description /> },
-    { href: "/menu_add", label: "รายงานภาพรวม", icon: <BarChart /> },
+    { href: "/admin_graph", label: "รายงานภาพรวม", icon: <BarChart /> },
 ];
 
 export default function ResponsiveDrawer(props: Props) {

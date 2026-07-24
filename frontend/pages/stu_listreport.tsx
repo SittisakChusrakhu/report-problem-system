@@ -14,19 +14,39 @@ import {
   Button,
   TextField,
   TablePagination,
-  Grid,
   Chip,
+  ToggleButton,
+  ToggleButtonGroup,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  SelectChangeEvent,
 } from "@mui/material";
-import { ChevronLeft, ChevronRight } from "@mui/icons-material";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpward,
+  ArrowDownward,
+} from "@mui/icons-material";
 import NavbarStu from "../components/NavbarStu";
 import { useRouter } from "next/router";
 import axios from "axios";
-import { ToastContainer, toast } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { Api } from "./api/api";
 import { CloudUpload, Add, DoNotDisturbOn, Delete } from "@mui/icons-material";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs, { Dayjs } from "dayjs";
-import { getStatusLabel, getStatusColor } from "../lib/problemStatus";
+import "dayjs/locale/th";
+import {
+  getStatusLabel,
+  getStatusColor,
+  getProblemTypeLabel,
+  PROBLEM_TYPE_LABELS,
+} from "../lib/problemStatus";
 
 interface Problem {
   id: string;
@@ -48,7 +68,6 @@ export default function StudentComponent() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [dialogData, setDialogData] = useState<any>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [feedbackList, setFeedbackList] = useState<any[]>([]);
   const [openEdit, setOpenEdit] = useState(false);
@@ -57,6 +76,9 @@ export default function StudentComponent() {
   const [type, setType] = useState("");
   const [details, setDetails] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"all" | "unresolved" | "resolved">("all");
+  const [sortOrder, setSortOrder] = useState<"latest" | "oldest">("latest");
+  const [filterDate, setFilterDate] = useState<Dayjs | null>(null);
 
   const fetchProblems = () => {
     const lid = localStorage.getItem("rid");
@@ -78,6 +100,7 @@ export default function StudentComponent() {
   };
 
   useEffect(() => {
+    dayjs.locale("th");
     fetchProblems();
 
     // โพลรายการปัญหาเป็นระยะ ให้หน้าอัปเดตเองเวลาอาจารย์ตอบกลับ/สถานะเปลี่ยน
@@ -92,24 +115,32 @@ export default function StudentComponent() {
       const data = new FormData();
       data.append("file", files[i]);
       data.append("upload_preset", "student");
-      await axios
-        .post("https://api.cloudinary.com/v1_1/drynd8ioj/image/upload", data)
-        .then((res) => {
-          setImageUrls((prevImageUrls) => [
-            ...prevImageUrls,
-            res.data.secure_url,
-          ]);
-        });
+      try {
+        const res = await axios.post(
+          "https://api.cloudinary.com/v1_1/drynd8ioj/image/upload",
+          data
+        );
+        setImageUrls((prevImageUrls) => [
+          ...prevImageUrls,
+          res.data.secure_url,
+        ]);
+      } catch (error: any) {
+        // เดิมไม่มี .catch() เลย — อัปโหลดล้มเหลวแบบเงียบๆ ไม่มีอะไรบอก
+        // ผู้ใช้ว่ารูปไม่ขึ้นเพราะอะไร ตอนนี้ log ไว้ดีบัก + toast บอกชื่อ
+        // ไฟล์ที่พังให้ผู้ใช้รู้ตัว
+        console.log(error);
+        toast.error(
+          `อัปโหลดรูป "${files[i].name}" ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง`,
+          {
+            position: "top-center",
+            autoClose: 3000,
+            theme: "colored",
+          }
+        );
+      }
     }
   };
 
-  const updateDialogDataImages = (updatedProImages: string) => {
-    setDialogData((prevDialogData: { pro_images: string }) => ({
-      ...prevDialogData,
-      pro_images: updatedProImages,
-    }));
-  };
-  
   const deleteImage = (index: number) => {
     const updatedImageUrls = [...imageUrls];
     updatedImageUrls.splice(index, 1);
@@ -117,15 +148,6 @@ export default function StudentComponent() {
     setCurrentImageIndex((prev) =>
       Math.min(prev, Math.max(0, updatedImageUrls.length - 1))
     );
-
-    // อัปเดตข้อมูล pro_images ใน dialogData
-    if (dialogData) {
-      const updatedProImages = dialogData.pro_images
-        .split(",")
-        .filter((_: any, i: number) => i !== index)
-        .join(",");
-      updateDialogDataImages(updatedProImages);
-    }
   };
   
 
@@ -134,18 +156,21 @@ export default function StudentComponent() {
       // NOTE: no longer sending `datetime` — the backend schema replaced
       // that with an auto-managed `update_at` timestamp, so the field isn't
       // accepted by the update endpoint anymore.
+      //
+      // pro_images มาจาก imageUrls ตรงๆ เสมอ (ไม่มี fallback ไปใช้
+      // editData.pro_images แล้ว) — เดิมมี `if (imageUrls.length > 0)` ที่
+      // ตั้งใจกันไม่ให้ล้างรูปตอนไม่ได้แตะรูปเลย แต่ตอนนี้ imageUrls ถูก
+      // hydrate จากรูปเดิมของปัญหานั้นตั้งแต่ตอนเปิด dialog อยู่แล้ว (ดู
+      // handleOpenDialog) เงื่อนไขเดิมเลยกลายเป็นบั๊ก: พอลบรูปจนเหลือ 0 รูป
+      // (imageUrls.length === 0) มันจะย้อนกลับไปส่งรูปชุดเก่าก่อนแก้แทน
+      // ทำให้ลบรูปจนหมดไม่ได้จริง
       const updatedData = {
         pro_title: title,
         pro_type: type,
         pro_desc: details,
-        pro_images: editData.pro_images,
+        pro_images: imageUrls.join(","),
       };
-  
-      // ตรวจสอบว่ามีอัปเดตรูปภาพหรือไม่
-      if (imageUrls.length > 0) {
-        updatedData.pro_images = imageUrls.join(",");
-      }
-  
+
       Api.put(`/problem/${editData.id}`, updatedData)
         .then((res) => {
           toast.success("อัปเดตรายงานปัญหาเรียบร้อยแล้ว", {
@@ -159,14 +184,15 @@ export default function StudentComponent() {
             theme: "colored",
           });
   
-          // ตรวจสอบตัวแปร openEdit และล้างค่า
-          if (openEdit) {
-            setOpenEdit(false);
-            setTitle("");
-            setType("");
-            setDetails("");
-            setImageUrls([]);
-          }
+          // ปิด dialog ที่กำลังแก้ไขอยู่ (ตัวจริงคือ openDialog ไม่ใช่
+          // openEdit — openEdit เป็น state ค้างที่ไม่เคยถูกตั้งเป็น true
+          // เลยทำให้ dialog ไม่ปิดหลังบันทึกสำเร็จ) พร้อมล้างค่าฟอร์ม
+          setOpenDialog(false);
+          setFeedbackList([]);
+          setTitle("");
+          setType("");
+          setDetails("");
+          setImageUrls([]);
   
           const lid = localStorage.getItem("rid");
           Api.get(`/user/problem/?sid=${lid}`)
@@ -179,6 +205,15 @@ export default function StudentComponent() {
         })
         .catch((error) => {
           console.log(error);
+          toast.error(
+            error?.response?.data?.message ||
+              "อัปเดตรายงานปัญหาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+            {
+              position: "top-center",
+              autoClose: 3000,
+              theme: "colored",
+            }
+          );
         });
     } else {
       console.log("editData is null");
@@ -214,11 +249,32 @@ export default function StudentComponent() {
   };
 
   useEffect(() => {
-    const filteredData = modelproblem.filter((problem: Problem) =>
+    let data = modelproblem.filter((problem: Problem) =>
       problem.pro_title.toLowerCase().includes(searchTerm.toLowerCase())
     );
-    setFilteredData(filteredData);
-  }, [searchTerm, modelproblem]);
+
+    if (statusFilter === "resolved") {
+      data = data.filter((problem) => problem.status === "RESOLVED");
+    } else if (statusFilter === "unresolved") {
+      data = data.filter((problem) => problem.status !== "RESOLVED");
+    }
+
+    // กรองตามวันที่ที่เลือก (เทียบเฉพาะ วัน/เดือน/ปี ไม่สนเวลา)
+    if (filterDate) {
+      data = data.filter((problem) =>
+        dayjs(problem.create_at).isSame(filterDate, "day")
+      );
+    }
+
+    data = [...data].sort((a, b) => {
+      const diff =
+        new Date(a.create_at).getTime() - new Date(b.create_at).getTime();
+      return sortOrder === "latest" ? -diff : diff;
+    });
+
+    setFilteredData(data);
+    setPage(0);
+  }, [searchTerm, modelproblem, statusFilter, sortOrder, filterDate]);
 
   const handleChangePage = (event: any, newPage: number) => {
     setPage(newPage);
@@ -230,14 +286,35 @@ export default function StudentComponent() {
   };
 
   const handleOpenDialog = (problem: any) => {
-    setEditData(problem); // ตรงนี้ควรตรวจสอบว่าคุณตั้งค่า editData ให้ถูกต้อง
+    setEditData(problem); // ค่าตั้งต้น เดี๋ยวจะถูกแทนที่ด้วยข้อมูลเต็มด้านล่าง
 
     // ตั้งค่าข้อมูลอื่น ๆ ที่ต้องการให้ใน Dialog
     setTitle(problem.pro_title);
     setType(problem.pro_type);
     setDetails(problem.pro_desc);
-    setImageUrls(problem.pro_images.split(","));
+    setImageUrls([]);
     setCurrentImageIndex(0);
+
+    // รายการที่ได้จากหน้า list (/user/problem) ไม่มี pro_images ติดมาด้วย
+    // เลย — backend ตัดออกโดยตั้งใจเพื่อไม่ให้หน้ารายการที่ poll ถี่ๆ ต้อง
+    // โหลดรูปหนักๆ ซ้ำๆ (ดู comment ใน problem.repository.js) ต้องยิง
+    // /problem/:id แยกอีกครั้งเพื่อเอาข้อมูลเต็มรวมรูปมาแสดงตอนเปิดดู
+    Api.get(`/problem/${problem.id}`)
+      .then((response: any) => {
+        const fullProblem = response.data;
+        setEditData(fullProblem);
+        setImageUrls(
+          fullProblem.pro_images ? fullProblem.pro_images.split(",") : []
+        );
+      })
+      .catch((error) => {
+        console.log(error);
+        toast.error("โหลดรายละเอียดปัญหาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", {
+          position: "top-center",
+          autoClose: 3000,
+          theme: "colored",
+        });
+      });
 
     Api.get(`/feedback?pro_id=${problem.id}`)
       .then((response: any) => {
@@ -252,7 +329,6 @@ export default function StudentComponent() {
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
-    setDialogData(null);
     setFeedbackList([]);
   };
 
@@ -274,10 +350,13 @@ export default function StudentComponent() {
     }
   }, [router.isReady, router.query, modelproblem]);
 
+  // สถานะ "แก้ไขแล้ว" ห้ามแก้ไขข้อมูลอีก — ดูอย่างเดียว
+  // (เคยมี state "dialogData" แยกอีกตัวที่ไม่เคยถูกเซ็ตค่าจริง — ลบทิ้งแล้ว
+  // ใช้ editData ตัวเดียวที่ handleOpenDialog เซ็ตค่าจริงแทน)
+  const isResolved = editData?.status === "RESOLVED";
   return (
     <>
       <NavbarStu />
-      <ToastContainer />
       <Box
         component="main"
         sx={{
@@ -293,24 +372,73 @@ export default function StudentComponent() {
           ติดตามสถานะปัญหาที่คุณได้แจ้งไว้
         </Typography>
         <Card>
-          <Box px={3} py={2.5} display="flex" alignItems="center">
+          <Box
+            px={3}
+            py={2.5}
+            display="flex"
+            alignItems="center"
+            flexWrap="wrap"
+            gap={2}
+          >
             <TextField
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               label="ค้นหาหัวข้อ"
               variant="outlined"
               size="small"
-              sx={{ mr: 2, width: 260 }}
+              sx={{ width: 260 }}
             />
+
+            <ToggleButtonGroup
+              value={statusFilter}
+              exclusive
+              size="small"
+              onChange={(e, value: "all" | "unresolved" | "resolved" | null) => {
+                if (value) setStatusFilter(value);
+              }}
+            >
+              <ToggleButton value="all">ทั้งหมด</ToggleButton>
+              <ToggleButton value="unresolved">ยังไม่แก้ไข</ToggleButton>
+              <ToggleButton value="resolved">แก้ไขแล้ว</ToggleButton>
+            </ToggleButtonGroup>
+
+            <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="th">
+              <DatePicker
+                label="เลือกวันที่"
+                value={filterDate}
+                onChange={(newValue) => setFilterDate(newValue)}
+                renderInput={(params) => (
+                  <TextField {...params} size="small" sx={{ width: 190 }} />
+                )}
+              />
+            </LocalizationProvider>
+            {filterDate && (
+              <Button size="small" onClick={() => setFilterDate(null)}>
+                ล้างวันที่
+              </Button>
+            )}
+
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() =>
+                setSortOrder((prev) => (prev === "latest" ? "oldest" : "latest"))
+              }
+              startIcon={
+                sortOrder === "latest" ? <ArrowDownward fontSize="small" /> : <ArrowUpward fontSize="small" />
+              }
+            >
+              {sortOrder === "latest" ? "ล่าสุด" : "นานสุด"}
+            </Button>
           </Box>
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Title</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Action</TableCell>
+                  <TableCell>หัวข้อ</TableCell>
+                  <TableCell>ประเภท</TableCell>
+                  <TableCell>สถานะ</TableCell>
+                  <TableCell>การจัดการ</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -319,7 +447,7 @@ export default function StudentComponent() {
                   .map((problem) => (
                     <TableRow key={problem.id} hover>
                       <TableCell>{problem.pro_title}</TableCell>
-                      <TableCell>{problem.pro_type}</TableCell>
+                      <TableCell>{getProblemTypeLabel(problem.pro_type)}</TableCell>
                       <TableCell>
                         <Chip
                           label={getStatusLabel(problem.status)}
@@ -345,7 +473,7 @@ export default function StudentComponent() {
           <TablePagination
             rowsPerPageOptions={[10, 25, 50]}
             component="div"
-            count={modelproblem.length}
+            count={filteredData.length}
             rowsPerPage={rowsPerPage}
             page={page}
             onPageChange={handleChangePage}
@@ -369,13 +497,13 @@ export default function StudentComponent() {
                   <ChevronLeft />
                 </Button>
                 <Typography variant="body2" mx={1}>
-                  {page + 1} of {Math.ceil(modelproblem.length / rowsPerPage)}
+                  {page + 1} of {Math.ceil(filteredData.length / rowsPerPage)}
                 </Typography>
                 <Button
                   size="small"
                   onClick={() => setPage((prevPage) => prevPage + 1)}
                   disabled={
-                    page === Math.ceil(modelproblem.length / rowsPerPage) - 1
+                    page === Math.ceil(filteredData.length / rowsPerPage) - 1
                   }
                   aria-label="next page"
                 >
@@ -386,75 +514,134 @@ export default function StudentComponent() {
           />
         </Card>
       </Box>
-      <Dialog open={openDialog} onClose={handleCloseDialog} PaperProps={{ sx: { borderRadius: 4 } }}>
-        <DialogContent sx={{ p: 3.5, minWidth: { sm: 420 } }}>
-          <Box mt={2}>
-            <TextField
-              label="Title"
-              variant="outlined"
-              size="small"
-              value={title || (dialogData && dialogData.pro_title)}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </Box>
-          <Box mt={2}>
-            <TextField
-              label="Type"
-              variant="outlined"
-              size="small"
-              value={type || (dialogData && dialogData.pro_type)}
-              onChange={(e) => setType(e.target.value)}
-            />
-          </Box>
-          <Box mt={2}>
-            <TextField
-              label="Description"
-              variant="outlined"
-              size="small"
-              multiline
-              rows={4}
-              value={details || (dialogData && dialogData.pro_desc)}
-              onChange={(e) => setDetails(e.target.value)}
-            />
-          </Box>
-          <Box mt={2}>
-            <Typography variant="body1" mb={2}>
-              Images:
+      <Dialog
+        open={openDialog}
+        onClose={handleCloseDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 4 } }}
+      >
+        <DialogContent sx={{ p: 3.5 }}>
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems="flex-start"
+            mb={isResolved ? 2 : 2.5}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 600, pr: 2 }}>
+              {isResolved ? editData?.pro_title : "แก้ไขรายงานปัญหา"}
             </Typography>
-            <Box mx={2}>
-              {imageUrls.length > 0 && imageUrls[currentImageIndex] ? (
-                <Box>
-                  <Box display="flex" alignItems="center" justifyContent="center">
-                    <Button
-                      disabled={currentImageIndex === 0}
-                      onClick={() =>
-                        setCurrentImageIndex((i) => Math.max(0, i - 1))
-                      }
-                    >
-                      <ChevronLeft />
-                    </Button>
-                    <img
-                      src={imageUrls[currentImageIndex]?.trim()}
-                      alt={`Problem Image ${currentImageIndex + 1}`}
-                      style={{
-                        maxWidth: "80%",
-                        maxHeight: 260,
-                        objectFit: "contain",
-                        borderRadius: 8,
-                      }}
-                    />
-                    <Button
-                      disabled={currentImageIndex === imageUrls.length - 1}
-                      onClick={() =>
-                        setCurrentImageIndex((i) =>
-                          Math.min(imageUrls.length - 1, i + 1)
-                        )
-                      }
-                    >
-                      <ChevronRight />
-                    </Button>
-                  </Box>
+            {editData && (
+              <Chip
+                label={getStatusLabel(editData.status)}
+                color={getStatusColor(editData.status)}
+                size="small"
+              />
+            )}
+          </Box>
 
+          {isResolved && editData && (
+            <Box display="flex" gap={1} mb={2.5} flexWrap="wrap">
+              <Chip label={getProblemTypeLabel(editData.pro_type)} size="small" variant="outlined" />
+              <Chip
+                label={new Date(editData.create_at).toLocaleDateString("th-TH", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })}
+                size="small"
+                variant="outlined"
+              />
+            </Box>
+          )}
+
+          {isResolved ? (
+            <Box sx={{ bgcolor: "#fafafa", borderRadius: 2, p: 2, mb: 2.5 }}>
+              <Typography variant="body2" color="text.secondary" mb={0.5}>
+                รายละเอียด
+              </Typography>
+              <Typography variant="body1">
+                {editData?.pro_desc}
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              <TextField
+                fullWidth
+                label="หัวข้อ"
+                variant="outlined"
+                size="small"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+              <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                <InputLabel id="edit-pro-type-label">ประเภทปัญหา</InputLabel>
+                <Select
+                  labelId="edit-pro-type-label"
+                  label="ประเภทปัญหา"
+                  value={type}
+                  onChange={(e: SelectChangeEvent) => setType(e.target.value)}
+                >
+                  {Object.entries(PROBLEM_TYPE_LABELS).map(([value, label]) => (
+                    <MenuItem key={value} value={value}>
+                      {label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                fullWidth
+                label="รายละเอียด"
+                variant="outlined"
+                size="small"
+                multiline
+                rows={4}
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+                sx={{ mb: 2.5 }}
+              />
+            </>
+          )}
+
+          <Box mb={2.5}>
+            <Typography variant="body2" color="text.secondary" mb={1}>
+              รูปภาพ:
+            </Typography>
+            {imageUrls.length > 0 && imageUrls[currentImageIndex] ? (
+              <Box>
+                <Box display="flex" alignItems="center" justifyContent="center">
+                  <Button
+                    disabled={currentImageIndex === 0}
+                    onClick={() =>
+                      setCurrentImageIndex((i) => Math.max(0, i - 1))
+                    }
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  <img
+                    src={imageUrls[currentImageIndex]?.trim()}
+                    alt={`Problem Image ${currentImageIndex + 1}`}
+                    style={{
+                      maxWidth: "80%",
+                      maxHeight: 260,
+                      objectFit: "contain",
+                      borderRadius: 8,
+                    }}
+                  />
+                  <Button
+                    disabled={currentImageIndex === imageUrls.length - 1}
+                    onClick={() =>
+                      setCurrentImageIndex((i) =>
+                        Math.min(imageUrls.length - 1, i + 1)
+                      )
+                    }
+                  >
+                    <ChevronRight />
+                  </Button>
+                </Box>
+
+                {!isResolved && (
                   <Box display="flex" justifyContent="center" mt={1}>
                     <Button
                       size="small"
@@ -465,53 +652,49 @@ export default function StudentComponent() {
                       ลบรูปนี้
                     </Button>
                   </Box>
+                )}
 
-                  {imageUrls.length > 1 && (
-                    <Box
-                      display="flex"
-                      gap={1}
-                      mt={1.5}
-                      justifyContent="center"
-                      flexWrap="wrap"
-                    >
-                      {imageUrls.map((imageUrl, index) => (
-                        <Box
-                          key={index}
-                          component="img"
-                          src={imageUrl}
-                          alt={`Thumbnail ${index + 1}`}
-                          onClick={() => setCurrentImageIndex(index)}
-                          sx={{
-                            width: 48,
-                            height: 48,
-                            objectFit: "cover",
-                            borderRadius: 1,
-                            cursor: "pointer",
-                            border:
-                              index === currentImageIndex
-                                ? "2px solid #1976d2"
-                                : "2px solid transparent",
-                          }}
-                        />
-                      ))}
-                    </Box>
-                  )}
-                </Box>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  ไม่มีรูปภาพประกอบ
-                </Typography>
-              )}
-            </Box>
-            <Grid container spacing={2} alignItems="center" sx={{ mt: 1 }}>
-              <Grid item>
-                <Button
-                  variant="contained"
-                  component="label"
-                  style={{ marginLeft: 10, marginTop: 10 }}
-                >
-                  <CloudUpload />
-                  Upload
+                {imageUrls.length > 1 && (
+                  <Box
+                    display="flex"
+                    gap={1}
+                    mt={1.5}
+                    justifyContent="center"
+                    flexWrap="wrap"
+                  >
+                    {imageUrls.map((imageUrl, index) => (
+                      <Box
+                        key={index}
+                        component="img"
+                        src={imageUrl}
+                        alt={`Thumbnail ${index + 1}`}
+                        onClick={() => setCurrentImageIndex(index)}
+                        sx={{
+                          width: 48,
+                          height: 48,
+                          objectFit: "cover",
+                          borderRadius: 1,
+                          cursor: "pointer",
+                          border:
+                            index === currentImageIndex
+                              ? "2px solid #1976d2"
+                              : "2px solid transparent",
+                        }}
+                      />
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                ไม่มีรูปภาพประกอบ
+              </Typography>
+            )}
+
+            {!isResolved && (
+              <Box mt={1.5}>
+                <Button variant="outlined" component="label" size="small" startIcon={<CloudUpload />}>
+                  อัปโหลด
                   <input
                     hidden
                     accept=".jpg,.jpeg,.png*"
@@ -519,11 +702,10 @@ export default function StudentComponent() {
                     onChange={upload_multiple_image}
                     multiple
                     type="file"
-                    style={{ marginTop: "10px" }}
                   />
                 </Button>
-              </Grid>
-            </Grid>
+              </Box>
+            )}
           </Box>
 
           <Box mt={3} pt={2} borderTop="1px solid #e0e0e0">
@@ -540,6 +722,12 @@ export default function StudentComponent() {
                   key={fb.id}
                   sx={{ bgcolor: "#f5f5f5", borderRadius: 2, p: 1.5, mb: 1 }}
                 >
+                  <Typography
+                    variant="caption"
+                    sx={{ display: "block", fontWeight: 600, color: "primary.main", mb: 0.25 }}
+                  >
+                    {fb.lecturer?.user?.user_name || "อาจารย์"}
+                  </Typography>
                   <Typography variant="body2">{fb.feed_massage}</Typography>
                   <Typography variant="caption" color="text.secondary">
                     {new Date(fb.create_at).toLocaleString("th-TH")}
@@ -549,14 +737,13 @@ export default function StudentComponent() {
             )}
           </Box>
 
-          <Box mt={2}>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={onConfirmUpdate}
-            >
-              Update
-            </Button>
+          <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
+            <Button onClick={handleCloseDialog}>ปิด</Button>
+            {!isResolved && (
+              <Button variant="contained" color="primary" onClick={onConfirmUpdate}>
+                บันทึก
+              </Button>
+            )}
           </Box>
         </DialogContent>
       </Dialog>

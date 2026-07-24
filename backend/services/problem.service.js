@@ -14,6 +14,18 @@ exports.getAllProblems = async ({ lid, sid }) => {
   return await problemRepository.findAll();
 };
 
+// ใช้ตอนเปิดดู/แก้ไขปัญหารายการเดียว — คืนข้อมูลเต็มรวม pro_images ต่างจาก
+// getAllProblems ที่ตัด pro_images ออกเพื่อความเร็วของหน้ารายการ
+exports.getProblemById = async (id) => {
+  const problem = await problemRepository.findById(id);
+
+  if (!problem) {
+    throw { status: 404, message: "ไม่พบปัญหานี้" };
+  }
+
+  return problem;
+};
+
 exports.createProblem = async (body) => {
   const { pro_title, pro_type, pro_desc, pro_image, lecturerId, stu, tags } =
     body;
@@ -44,20 +56,14 @@ exports.createProblem = async (body) => {
       lecturerId
     );
 
-   if (lecturer) {
-      // ห่อ try/catch กัน mail server ล่ม (เช่น SMTP timeout) แล้วดึงทั้ง
-      // request พังไปด้วย — ควรให้ปัญหาถูกสร้างสำเร็จเสมอ ต่อให้ส่งเมลไม่ได้
-      try {
-        await mailer.sendProblemNotification({
-          to: lecturer.user.user_email,
-          studentName: student.user.user_name,
-          pro_title,
-          pro_desc,
-          pro_image,
-        });
-      } catch (error) {
-        console.error("ส่งอีเมลแจ้งอาจารย์ไม่สำเร็จ:", error);
-      }
+    if (lecturer) {
+      await mailer.sendProblemNotification({
+        to: lecturer.user.user_email,
+        studentName: student.user.user_name,
+        pro_title,
+        pro_desc,
+        pro_image,
+      });
     }
 
     // แจ้งเตือนอาจารย์ (กระดิ่งฝั่งอาจารย์) ว่ามีนักศึกษาแจ้งปัญหาใหม่เข้ามา

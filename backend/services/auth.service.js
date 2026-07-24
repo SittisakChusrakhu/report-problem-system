@@ -9,6 +9,11 @@ const JWT_EXPIRES_IN = "7d";
 const RESET_TOKEN_EXPIRY_MINUTES = 15;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
+exports.checkEmailExists = async (user_email) => {
+  const user = await authRepository.findByEmail(user_email);
+  return !!user;
+};
+
 exports.login = async (user_email, user_password) => {
   const user = await authRepository.findByEmail(user_email);
 

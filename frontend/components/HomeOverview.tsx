@@ -140,7 +140,7 @@ function QuickActionCard({
 }
 
 interface HomeOverviewProps {
-    role: "student" | "lecturer";
+    role: "student" | "lecturer" | "admin";
     navbar: React.ReactNode;
 }
 
@@ -245,7 +245,8 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                       { label: "แก้ไขข้อมูลส่วนตัว", href: "/stu_edit", icon: <EditOutlined sx={{ fontSize: 20 }} /> },
                   ],
               }
-            : {
+            : role === "lecturer"
+            ? {
                   subtitle: "ภาพรวมปัญหาที่ต้องดำเนินการและหัวข้อที่พบบ่อยในระบบ",
                   ctaLabel: "ดูสรุปข้อมูลเชิงลึก",
                   ctaHref: "/lect_graph",
@@ -256,6 +257,19 @@ export default function HomeOverview({ role, navbar }: HomeOverviewProps) {
                       { label: "ดูรายงานนักศึกษา", href: "/lect_read", icon: <ListAltOutlined sx={{ fontSize: 20 }} /> },
                       { label: "ดูสรุปข้อมูลเชิงลึก", href: "/lect_graph", icon: <InsightsOutlined sx={{ fontSize: 20 }} /> },
                       { label: "แก้ไขข้อมูลส่วนตัว", href: "/lect_edit", icon: <EditOutlined sx={{ fontSize: 20 }} /> },
+                  ],
+              }
+            : {
+                  subtitle: "ภาพรวมปัญหาทั้งหมดในระบบและหัวข้อที่พบบ่อย",
+                  ctaLabel: "ดูรายงานภาพรวม",
+                  ctaHref: "/admin_graph",
+                  browseLabel: "จัดการผู้ใช้งาน",
+                  browseHref: "/add-uesr",
+                  statLabels: { total: "ปัญหาทั้งหมดในระบบ", open: "รอดำเนินการ", rate: "อัตราแก้ไขสำเร็จ" },
+                  quickActions: [
+                      { label: "จัดการผู้ใช้งาน", href: "/add-uesr", icon: <ListAltOutlined sx={{ fontSize: 20 }} /> },
+                      { label: "เพิ่ม Topic ปัญหา", href: "/add-report", icon: <AddCircleOutline sx={{ fontSize: 20 }} /> },
+                      { label: "ดูรายงานภาพรวม", href: "/admin_graph", icon: <InsightsOutlined sx={{ fontSize: 20 }} /> },
                   ],
               };
 

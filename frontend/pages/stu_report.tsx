@@ -16,15 +16,18 @@ import {
   OutlinedInput,
   Typography,
   Divider,
+  CircularProgress,
+  Dialog,
+  DialogContent,
+  IconButton,
 } from "@mui/material";
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/router";
 import NavbarStu from "../components/NavbarStu";
 import axios from "axios";
 import { Api } from "./api/api";
-import { ToastContainer, toast } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { CloudUpload, Delete, Send } from "@mui/icons-material";
+import { CloudUpload, Delete, Send, Close } from "@mui/icons-material";
 import "dayjs/locale/th";
 import dayjs, { Dayjs } from "dayjs";
 import { PROBLEM_TYPE_LABELS } from "../lib/problemStatus";
@@ -41,8 +44,6 @@ const MenuProps = {
 };
 
 export default function CreateProblemPage() {
-  const router = useRouter();
-
   interface Tag {
     id: number;
     name: string;
@@ -110,12 +111,16 @@ export default function CreateProblemPage() {
     setSelectLecturer(event.target.value);
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleSubmitstu = async () => {
+    if (isSubmitting) return; // กันกดส่งซ้ำระหว่างรอ API ตอบกลับ
     problem.pro_image = imageUrls.join(",");
     problem.tags = selectedTags;
     problem.pro_type = selectProblemType;
     problem.lecturerId = selectLecturer ? Number(selectLecturer) : undefined;
     console.log(problem);
+    setIsSubmitting(true);
     try {
       const res = await Api.post("/problem", problem);
       if (res.data) {
@@ -129,15 +134,10 @@ export default function CreateProblemPage() {
           progress: undefined,
           theme: "colored",
         });
-        // Previously the page just sat there with the old values still
-        // filled in (the commented-out location.reload below was the
-        // original attempt to fix that, but a hard reload throws away the
-        // toast too). Navigating to the report list instead: it lands on a
-        // fresh page mount (form fully reset) and shows the newly created
-        // report immediately.
-        setTimeout(() => {
-          router.push("/stu_listreport");
-        }, 1200);
+        // Reset the form back to its empty state right away instead of
+        // navigating off the page — no reload needed, and the person can
+        // report another problem immediately if they need to.
+        resetForm();
       }
     } catch (error: any) {
       toast.error(
@@ -153,23 +153,114 @@ export default function CreateProblemPage() {
           theme: "colored",
         }
       );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
+  const resetForm = () => {
+    setproblem({
+      id: 0,
+      pro_title: "",
+      pro_type: "",
+      pro_desc: "",
+      pro_image: "",
+      lecturerId: undefined,
+      stu: Number(localStorage.getItem("rid")),
+      tags: [],
+    });
+    setSelectLecturer("");
+    setSelectProblemType("");
+    setSelectedTags([]);
+    setSelectTagIds([]);
+    setImageUrls([]);
+  };
+
+  // จำกัดชนิดไฟล์และขนาด — ก่อนหน้านี้ accept=".jpg,.jpeg,.png*" ที่ input
+  // เป็นแค่ตัวกรอง dialog เลือกไฟล์ของเบราว์เซอร์เท่านั้น ไม่ได้บังคับจริง
+  // ถ้าผู้ใช้เลือก "All Files" หรือลากไฟล์อื่นเข้ามาจะหลุดผ่านไปอัปโหลด
+  // Cloudinary ทันที เลยเพิ่มเช็คจาก file.type/file.size ตรงนี้แทน
+  const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"];
+  const MAX_FILE_SIZE_MB = 5;
+  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+  const MAX_IMAGE_COUNT = 8;
+
   const upload_multiple_image = async (e: any) => {
     const files = e.target.files;
-    for (let i = 0; i < files.length; i++) {
-      const data = new FormData();
-      data.append("file", files[i]);
-      data.append("upload_preset", "student");
-      axios
-        .post("https://api.cloudinary.com/v1_1/drynd8ioj/image/upload", data)
-        .then((res) => {
+
+    if (imageUrls.length >= MAX_IMAGE_COUNT) {
+      toast.error(`อัปโหลดได้สูงสุด ${MAX_IMAGE_COUNT} รูปต่อการแจ้งปัญหา`, {
+        position: "top-center",
+        autoClose: 3000,
+        theme: "colored",
+      });
+      e.target.value = ""; // เคลียร์ input เผื่อเลือกไฟล์เดิมซ้ำอีกครั้งในอนาคต
+      return;
+    }
+
+    // ถ้าเลือกมาแล้วรวมกับที่มีอยู่เกิน limit ก็ตัดส่วนเกินทิ้ง (อัปโหลดเท่าที่พอดี)
+    const remainingSlots = MAX_IMAGE_COUNT - imageUrls.length;
+    if (files.length > remainingSlots) {
+      toast.error(
+        `เหลือโควต้าอัปโหลดได้อีก ${remainingSlots} รูป (สูงสุด ${MAX_IMAGE_COUNT} รูป) — จะอัปโหลดให้ ${remainingSlots} รูปแรกเท่านั้น`,
+        {
+          position: "top-center",
+          autoClose: 4000,
+          theme: "colored",
+        }
+      );
+    }
+
+    setIsUploadingImages(true);
+    try {
+      for (let i = 0; i < Math.min(files.length, remainingSlots); i++) {
+        if (!ALLOWED_IMAGE_TYPES.includes(files[i].type)) {
+          toast.error(`"${files[i].name}" ไม่ใช่ไฟล์รูปภาพที่รองรับ (รองรับเฉพาะ JPG, PNG)`, {
+            position: "top-center",
+            autoClose: 3000,
+            theme: "colored",
+          });
+          continue;
+        }
+        if (files[i].size > MAX_FILE_SIZE_BYTES) {
+          toast.error(`"${files[i].name}" มีขนาดเกิน ${MAX_FILE_SIZE_MB}MB กรุณาลดขนาดไฟล์แล้วลองใหม่`, {
+            position: "top-center",
+            autoClose: 3000,
+            theme: "colored",
+          });
+          continue;
+        }
+
+        const data = new FormData();
+        data.append("file", files[i]);
+        data.append("upload_preset", "student");
+        try {
+          const res = await axios.post(
+            "https://api.cloudinary.com/v1_1/drynd8ioj/image/upload",
+            data
+          );
           setImageUrls((prevImageUrls) => [
             ...prevImageUrls,
             res.data.secure_url,
           ]);
-        });
+        } catch (error: any) {
+          // เดิมไม่มี .catch() เลย — อัปโหลดล้มเหลวแบบเงียบๆ ไม่มีอะไรบอก
+          // ผู้ใช้ว่ารูปไม่ขึ้นเพราะอะไร ตอนนี้ log ไว้ดีบัก + toast บอกชื่อ
+          // ไฟล์ที่พังให้ผู้ใช้รู้ตัว
+          console.log(error);
+          toast.error(
+            `อัปโหลดรูป "${files[i].name}" ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง`,
+            {
+              position: "top-center",
+              autoClose: 3000,
+              theme: "colored",
+            }
+          );
+        }
+      }
+    } finally {
+      setIsUploadingImages(false);
+      e.target.value = ""; // เคลียร์ input ให้เลือกไฟล์เดิมซ้ำได้ในอนาคต
     }
   };
 
@@ -213,10 +304,11 @@ export default function CreateProblemPage() {
   };
 
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   return (
     <Box component="form">
-      <ToastContainer />
       <NavbarStu />
       <Box
         component="main"
@@ -380,7 +472,14 @@ export default function CreateProblemPage() {
               <Button
                 variant="outlined"
                 component="label"
-                startIcon={<CloudUpload />}
+                disabled={isUploadingImages || imageUrls.length >= MAX_IMAGE_COUNT}
+                startIcon={
+                  isUploadingImages ? (
+                    <CircularProgress size={16} />
+                  ) : (
+                    <CloudUpload />
+                  )
+                }
                 sx={{
                   borderStyle: "dashed",
                   borderWidth: 2,
@@ -390,16 +489,26 @@ export default function CreateProblemPage() {
                   borderColor: "rgba(0,0,0,0.2)",
                 }}
               >
-                อัปโหลดรูปภาพ
+                {isUploadingImages
+                  ? "กำลังอัปโหลด..."
+                  : imageUrls.length >= MAX_IMAGE_COUNT
+                  ? `ครบ ${MAX_IMAGE_COUNT} รูปแล้ว`
+                  : "อัปโหลดรูปภาพ"}
                 <input
                   hidden
-                  accept=".jpg,.jpeg,.png*"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                   id="fileInput"
                   onChange={upload_multiple_image}
                   multiple
                   type="file"
+                  disabled={isUploadingImages || imageUrls.length >= MAX_IMAGE_COUNT}
                 />
               </Button>
+              {imageUrls.length > 0 && (
+                <Typography variant="caption" color="text.secondary">
+                  {imageUrls.length}/{MAX_IMAGE_COUNT} รูป
+                </Typography>
+              )}
 
               {imageUrls.map((imageUrl, index) => (
                 <Box key={index} sx={{ position: "relative" }}>
@@ -407,11 +516,13 @@ export default function CreateProblemPage() {
                     component="img"
                     src={imageUrl}
                     alt={`Image ${index}`}
+                    onClick={() => setPreviewImageUrl(imageUrl)}
                     sx={{
                       width: 72,
                       height: 72,
                       objectFit: "cover",
                       borderRadius: 2,
+                      cursor: "pointer",
                     }}
                   />
                   <Button
@@ -441,13 +552,48 @@ export default function CreateProblemPage() {
                 size="large"
                 startIcon={<Send />}
                 onClick={handleSubmitstu}
+                disabled={isSubmitting}
               >
-                แจ้งปัญหา
+                {isSubmitting ? "กำลังส่ง..." : "แจ้งปัญหา"}
               </Button>
             </Box>
           </CardContent>
         </Card>
       </Box>
+
+      <Dialog
+        open={!!previewImageUrl}
+        onClose={() => setPreviewImageUrl(null)}
+        maxWidth="md"
+      >
+        <DialogContent sx={{ p: 1, position: "relative" }}>
+          <IconButton
+            onClick={() => setPreviewImageUrl(null)}
+            sx={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              backgroundColor: "rgba(255,255,255,0.8)",
+            }}
+            size="small"
+          >
+            <Close fontSize="small" />
+          </IconButton>
+          {previewImageUrl && (
+            <Box
+              component="img"
+              src={previewImageUrl}
+              alt="Preview"
+              sx={{
+                maxWidth: "100%",
+                maxHeight: "80vh",
+                display: "block",
+                borderRadius: 1,
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }

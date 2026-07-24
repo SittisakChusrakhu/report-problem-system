@@ -15,14 +15,27 @@ import {
   TextField,
   TablePagination,
   Chip,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
-import { ChevronLeft, ChevronRight, Send } from "@mui/icons-material";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Send,
+  ArrowUpward,
+  ArrowDownward,
+} from "@mui/icons-material";
 import { useRouter } from "next/router";
 import NavbarLect from "../components/NavbarLect";
 import { Api } from "./api/api";
 import { getStatusLabel, getStatusColor, getProblemTypeLabel } from "../lib/problemStatus";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs, { Dayjs } from "dayjs";
+import "dayjs/locale/th";
 
 interface Feedback {
   id: number;
@@ -57,6 +70,9 @@ export default function ListReport() {
   const [feedbackList, setFeedbackList] = useState<Feedback[]>([]);
   const [replyText, setReplyText] = useState("");
   const [submittingReply, setSubmittingReply] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "unresolved" | "resolved">("all");
+  const [sortOrder, setSortOrder] = useState<"latest" | "oldest">("latest");
+  const [filterDate, setFilterDate] = useState<Dayjs | null>(null);
 
   const fetchProblems = () => {
     const lid = localStorage.getItem("rid");
@@ -82,6 +98,7 @@ export default function ListReport() {
   };
 
   useEffect(() => {
+    dayjs.locale("th");
     fetchProblems();
 
     // โพลรายการปัญหาเป็นระยะ ให้หน้าอัปเดตเองเวลามีนักศึกษาแจ้งปัญหาใหม่
@@ -105,19 +122,41 @@ export default function ListReport() {
 
   const handleDeleteSearch = () => {
     setSearchTerm("");
-    setFilteredData(modelproblem); // รีเซ็ตค่า filteredData เพื่อแสดงผลลัพธ์ทั้งหมด
 
     // เคลียร์ค่า currentImageIndex เพื่อกลับไปที่รูปภาพแรก
     setCurrentImageIndex(0);
   };
 
-  // useEffect ใหม่เพื่ออัปเดต filteredData เมื่อ searchTerm เปลี่ยนแปลง
+  // useEffect ใหม่เพื่ออัปเดต filteredData เมื่อ searchTerm/statusFilter/
+  // sortOrder เปลี่ยนแปลง — กรองด้วยชื่อเรื่องก่อน แล้วกรองสถานะ (ยังไม่แก้ไข
+  // / แก้ไขแล้ว) แล้วค่อยเรียงตามวันที่ตามทิศทางที่เลือก
   useEffect(() => {
-    const filteredData = modelproblem.filter((problem: Problem) =>
+    let data = modelproblem.filter((problem: Problem) =>
       problem.pro_title.toLowerCase().includes(searchTerm.toLowerCase())
     );
-    setFilteredData(filteredData);
-  }, [searchTerm, modelproblem]);
+
+    if (statusFilter === "resolved") {
+      data = data.filter((problem) => problem.status === "RESOLVED");
+    } else if (statusFilter === "unresolved") {
+      data = data.filter((problem) => problem.status !== "RESOLVED");
+    }
+
+    // กรองตามวันที่ที่เลือก (เทียบเฉพาะ วัน/เดือน/ปี ไม่สนเวลา)
+    if (filterDate) {
+      data = data.filter((problem) =>
+        dayjs(problem.create_at).isSame(filterDate, "day")
+      );
+    }
+
+    data = [...data].sort((a, b) => {
+      const diff =
+        new Date(a.create_at).getTime() - new Date(b.create_at).getTime();
+      return sortOrder === "latest" ? -diff : diff;
+    });
+
+    setFilteredData(data);
+    setPage(0);
+  }, [searchTerm, modelproblem, statusFilter, sortOrder, filterDate]);
   const handleChangePage = (event: any, newPage: number) => {
     setPage(newPage);
   };
@@ -132,6 +171,24 @@ export default function ListReport() {
     setCurrentImageIndex(0); // เพิ่มบรรทัดนี้เพื่อรีเซ็ตค่า currentImageIndex เมื่อกดดู problem ใหม่
     setReplyText("");
     setOpenDialog(true);
+
+    // รายการที่ได้จากหน้า list (/user/problem) ไม่มี pro_images ติดมาด้วย
+    // เลย — backend ตัดออกโดยตั้งใจ (ดู comment เดียวกันฝั่ง stu_listreport.tsx)
+    // ต้องยิง /problem/:id แยกอีกครั้งเพื่อเอาข้อมูลเต็มรวมรูปมาแสดง ไม่งั้น
+    // dialogData.pro_images จะว่างเปล่าตลอด ทำให้ไม่มีรูปให้อาจารย์เห็นเลย
+    Api.get(`/problem/${data.id}`)
+      .then((response: any) => {
+        const fullProblem = response.data;
+        setDialogData((prev) => (prev ? { ...prev, pro_images: fullProblem.pro_images } : fullProblem));
+      })
+      .catch((error) => {
+        console.log(error);
+        toast.error("โหลดรูปภาพประกอบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", {
+          position: "top-center",
+          autoClose: 3000,
+          theme: "colored",
+        });
+      });
 
     // Opening the detail view means the lecturer has now seen it — move
     // PENDING/UNASSIGNED forward to IN_PROGRESS. The backend only moves it
@@ -215,10 +272,7 @@ export default function ListReport() {
       feed_massage: replyText.trim(),
     })
       .then((response: any) => {
-        setFeedbackList((prev) => [...prev, response.data]);
-        setReplyText("");
-        // Replying resolves the problem — reflect that immediately.
-        setDialogData((prev) => (prev ? { ...prev, status: "RESOLVED" } : prev));
+        // Replying resolves the problem — reflect that in the table.
         setModelProblem((prev) =>
           prev.map((p) =>
             p.id === dialogData.id ? { ...p, status: "RESOLVED" } : p
@@ -229,6 +283,9 @@ export default function ListReport() {
           autoClose: 2500,
           theme: "colored",
         });
+        // ปิด dialog แล้วเคลียร์ state ทั้งหมดเหมือนกดปิดเอง (handleCloseDialog)
+        // แทนที่จะปล่อยให้ dialog ค้างอยู่พร้อม feedbackList/replyText เก่า
+        handleCloseDialog();
       })
       .catch((error) => {
         console.log(error);
@@ -263,26 +320,75 @@ export default function ListReport() {
           ค้นหาและตรวจสอบรายงานปัญหาที่นักศึกษาส่งเข้ามา
         </Typography>
         <Card>
-          <Box px={3} py={2.5} display="flex" alignItems="center">
+          <Box
+            px={3}
+            py={2.5}
+            display="flex"
+            alignItems="center"
+            flexWrap="wrap"
+            gap={2}
+          >
             <TextField
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               label="ค้นหาหัวข้อ"
               variant="outlined"
               size="small"
-              sx={{ mr: 2, width: 260 }}
+              sx={{ width: 260 }}
             />
+
+            <ToggleButtonGroup
+              value={statusFilter}
+              exclusive
+              size="small"
+              onChange={(e, value: "all" | "unresolved" | "resolved" | null) => {
+                if (value) setStatusFilter(value);
+              }}
+            >
+              <ToggleButton value="all">ทั้งหมด</ToggleButton>
+              <ToggleButton value="unresolved">ยังไม่แก้ไข</ToggleButton>
+              <ToggleButton value="resolved">แก้ไขแล้ว</ToggleButton>
+            </ToggleButtonGroup>
+
+            <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="th">
+              <DatePicker
+                label="เลือกวันที่"
+                value={filterDate}
+                onChange={(newValue) => setFilterDate(newValue)}
+                renderInput={(params) => (
+                  <TextField {...params} size="small" sx={{ width: 190 }} />
+                )}
+              />
+            </LocalizationProvider>
+            {filterDate && (
+              <Button size="small" onClick={() => setFilterDate(null)}>
+                ล้างวันที่
+              </Button>
+            )}
+
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() =>
+                setSortOrder((prev) => (prev === "latest" ? "oldest" : "latest"))
+              }
+              startIcon={
+                sortOrder === "latest" ? <ArrowDownward fontSize="small" /> : <ArrowUpward fontSize="small" />
+              }
+            >
+              {sortOrder === "latest" ? "ล่าสุด" : "นานสุด"}
+            </Button>
           </Box>
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Title</TableCell>
-                  <TableCell>Type</TableCell>
+                  <TableCell>หัวข้อ</TableCell>
+                  <TableCell>ประเภท</TableCell>
 
-                  <TableCell>Submitted By</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Action</TableCell>
+                  <TableCell>ผู้แจ้ง</TableCell>
+                  <TableCell>สถานะ</TableCell>
+                  <TableCell>การจัดการ</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -325,7 +431,7 @@ export default function ListReport() {
           <TablePagination
             rowsPerPageOptions={[10, 25, 50]}
             component="div"
-            count={modelproblem.length}
+            count={filteredData.length}
             rowsPerPage={rowsPerPage}
             page={page}
             onPageChange={handleChangePage}
@@ -349,13 +455,13 @@ export default function ListReport() {
                   <ChevronLeft />
                 </Button>
                 <Typography variant="body2" mx={1}>
-                  {page + 1} of {Math.ceil(modelproblem.length / rowsPerPage)}
+                  {page + 1} of {Math.ceil(filteredData.length / rowsPerPage)}
                 </Typography>
                 <Button
                   size="small"
                   onClick={() => setPage((prevPage) => prevPage + 1)}
                   disabled={
-                    page === Math.ceil(modelproblem.length / rowsPerPage) - 1
+                    page === Math.ceil(filteredData.length / rowsPerPage) - 1
                   }
                   aria-label="next page"
                 >
@@ -417,8 +523,8 @@ export default function ListReport() {
                 <Typography variant="body1">{dialogData.pro_desc}</Typography>
               </Box>
 
-              <Typography variant="body1" mb={2}>
-                Images:
+              <Typography variant="body2" color="text.secondary" mb={1}>
+                รูปภาพ:
               </Typography>
               {(() => {
                 const images = dialogData.pro_images
@@ -434,29 +540,62 @@ export default function ListReport() {
                 }
 
                 return (
-                  <Box display="flex" alignItems="center">
-                    <Button
-                      disabled={currentImageIndex === 0}
-                      onClick={() => handleImageChange(currentImageIndex - 1)}
-                    >
-                      Previous
-                    </Button>
-                    <Box mx={2}>
+                  <Box mb={2}>
+                    <Box display="flex" alignItems="center" justifyContent="center">
+                      <Button
+                        disabled={currentImageIndex === 0}
+                        onClick={() => handleImageChange(currentImageIndex - 1)}
+                      >
+                        <ChevronLeft />
+                      </Button>
                       <img
                         src={images[currentImageIndex]?.trim()}
                         alt={`Problem Image ${currentImageIndex + 1}`}
                         style={{
-                          maxWidth: "100%",
-                          height: "auto",
+                          maxWidth: "80%",
+                          maxHeight: 260,
+                          objectFit: "contain",
+                          borderRadius: 8,
                         }}
                       />
+                      <Button
+                        disabled={currentImageIndex === images.length - 1}
+                        onClick={() => handleImageChange(currentImageIndex + 1)}
+                      >
+                        <ChevronRight />
+                      </Button>
                     </Box>
-                    <Button
-                      disabled={currentImageIndex === images.length - 1}
-                      onClick={() => handleImageChange(currentImageIndex + 1)}
-                    >
-                      Next
-                    </Button>
+
+                    {images.length > 1 && (
+                      <Box
+                        display="flex"
+                        gap={1}
+                        mt={1.5}
+                        justifyContent="center"
+                        flexWrap="wrap"
+                      >
+                        {images.map((imageUrl, index) => (
+                          <Box
+                            key={index}
+                            component="img"
+                            src={imageUrl}
+                            alt={`Thumbnail ${index + 1}`}
+                            onClick={() => setCurrentImageIndex(index)}
+                            sx={{
+                              width: 48,
+                              height: 48,
+                              objectFit: "cover",
+                              borderRadius: 1,
+                              cursor: "pointer",
+                              border:
+                                index === currentImageIndex
+                                  ? "2px solid #1976d2"
+                                  : "2px solid transparent",
+                            }}
+                          />
+                        ))}
+                      </Box>
+                    )}
                   </Box>
                 );
               })()}

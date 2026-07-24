@@ -55,6 +55,8 @@ exports.updateLecturer = async (id, body) => {
   return shapeLecturer(lecturer);
 };
 
-exports.deleteLecturer = async (id) => {
-  return await lecturerRepository.delete(id);
+exports.deleteLecturer = async (id, uid) => {
+  await lecturerRepository.deleteWithUser(id, uid);
+
+  return "delete successfully";
 };

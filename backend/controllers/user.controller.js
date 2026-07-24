@@ -1,5 +1,19 @@
 const userService = require("../services/user.service");
 
+exports.checkEmail = async (req, res) => {
+  try {
+    const email = req.query.email;
+    if (!email) {
+      return res.status(400).json({ message: "ต้องระบุอีเมล" });
+    }
+    const exists = await userService.checkEmailExists(email);
+    res.json({ exists });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
 exports.getAllsUser = async (req, res) => {
   try {
     const users = await userService.getAllUsers();
@@ -32,7 +46,8 @@ exports.updateUser = async (req, res) => {
   try {
     const user = await userService.updateUser(
       req.params.id,
-      req.body
+      req.body,
+      req.user
     );
 
     res.json(user);

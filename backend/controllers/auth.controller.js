@@ -19,6 +19,22 @@ exports.login = async (req, res) => {
   }
 };
 
+// GET /check-email?email=xxx@ubu.ac.th — real-time duplicate check
+// used while typing in the register form, ahead of full submission.
+exports.checkEmail = async (req, res) => {
+  try {
+    const exists = await authService.checkEmailExists(req.query.email);
+
+    res.json({ exists });
+  } catch (error) {
+    console.error(error);
+
+    res.status(error.status || 500).json({
+      message: error.message || "Server Error",
+    });
+  }
+};
+
 exports.forgotPassword = async (req, res) => {
   try {
     const { user_email } = req.body;

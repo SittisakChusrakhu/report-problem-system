@@ -35,3 +35,21 @@ module.exports.requireRole = function (...allowedRoles) {
     next();
   };
 };
+
+// ใช้กับ route ที่ :id ในพาธเป็น User.id ตรงๆ (เช่น PUT /user/:id) — อนุญาต
+// ถ้าเป็นเจ้าของบัญชีเอง หรือถ้าเป็น role ที่อนุญาตไว้ (เช่น admin) เท่านั้น
+// เดิมมีแค่ verifyToken (เช็คแค่ "login อยู่ไหม") ทำให้ user คนไหนก็แก้/ลบ
+// ข้อมูลของ user คนอื่นได้แค่เดา id ใน URL — จุดนี้คือช่องโหว่ authorization
+module.exports.requireOwnerOrRole = function (paramKey, ...allowedRoles) {
+  return function (req, res, next) {
+    if (!req.user) {
+      return res.status(401).json({ message: "No token provided" });
+    }
+    const isOwner = Number(req.params[paramKey]) === req.user.id;
+    const hasRole = allowedRoles.includes(req.user.role_id);
+    if (!isOwner && !hasRole) {
+      return res.status(403).json({ message: "Permission denied" });
+    }
+    next();
+  };
+};

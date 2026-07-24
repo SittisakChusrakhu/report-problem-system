@@ -2,6 +2,13 @@ import "../styles/globals.css";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import type { AppProps } from "next/app";
+import { useRouter } from "next/router";
+import { useEffect, useState, type ReactNode } from "react";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
+// หน้าที่ไม่ต้อง login ก็เข้าได้ (login, สมัครสมาชิก, ลืมรหัสผ่าน)
+const PUBLIC_PATHS = ["/", "/register", "/forgot-password", "/reset-password"];
 
 const THEME = createTheme({
   shape: {
@@ -126,11 +133,47 @@ const THEME = createTheme({
   },
 });
 
+// เดิมไม่มีการเช็คฝั่ง frontend เลยว่า login อยู่ไหมก่อนโหลดหน้า — ถ้าเปิด
+// URL ของหน้าที่ต้อง login (เช่น copy ไปวางเบราว์เซอร์อื่น) จะเห็นแค่หน้า
+// เปล่าๆ โหลดข้อมูลไม่ขึ้นแบบเงียบๆ (เพราะ API เรียกไปโดน 401 แต่ไม่มีอะไร
+// จัดการต่อ) เช็คตรงนี้ทำให้เด้งกลับไปหน้า login ทันทีแทน พร้อมข้อความชัดเจน
+function AuthGuard({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const isPublic = PUBLIC_PATHS.includes(router.pathname);
+    const hasToken =
+      typeof window !== "undefined" && !!localStorage.getItem("token");
+
+    if (!isPublic && !hasToken) {
+      router.replace("/");
+      return;
+    }
+
+    setReady(true);
+  }, [router.pathname]);
+
+  // กันไม่ให้หน้า protected เรนเดอร์แวบเดียวก่อนจะรู้ตัวว่าไม่มี token
+  if (!ready && !PUBLIC_PATHS.includes(router.pathname)) {
+    return null;
+  }
+
+  return <>{children}</>;
+}
+
 export default function App({ Component, pageProps }: AppProps) {
   return (
     <ThemeProvider theme={THEME}>
       <CssBaseline />
-      <Component {...pageProps} />
+      {/* คอนเทนเนอร์เดียวสำหรับ toast ทั้งแอป — ต้องอยู่นอก AuthGuard เพราะ
+          AuthGuard คืนค่า null ชั่วคราวตอนเช็ค token ยังไม่เสร็จ ถ้าใส่ไว้
+          ข้างในจะโดน unmount ไปด้วยตอนนั้น แล้ว toast ที่ยิงมาก่อนหน้าจะ
+          หายไปเงียบๆ — แต่ละหน้าไม่ควรมี <ToastContainer /> ของตัวเองซ้ำอีก */}
+      <ToastContainer />
+      <AuthGuard>
+        <Component {...pageProps} />
+      </AuthGuard>
     </ThemeProvider>
   );
 }

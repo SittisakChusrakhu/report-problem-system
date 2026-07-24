@@ -4,6 +4,11 @@ exports.findAll = () => {
   return prisma.student.findMany({ include: { user: true } });
 };
 
+// ใช้เช็คสิทธิ์ก่อนแก้ไข (ต้องรู้ user_id ของแถวนี้ ว่าตรงกับคนที่ login อยู่ไหม)
+exports.findById = (id) => {
+  return prisma.student.findUnique({ where: { id: Number(id) } });
+};
+
 exports.findByIds = (ids) => {
   return prisma.student.findMany({
     where: { id: { in: ids } },

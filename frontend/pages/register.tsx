@@ -14,8 +14,10 @@ import {
     DialogActions,
     Box,
     Avatar,
+    IconButton,
+    InputAdornment,
 } from "@mui/material";
-import { PersonAdd } from "@mui/icons-material";
+import { PersonAdd, Visibility, VisibilityOff } from "@mui/icons-material";
 
 import router from "next/router";
 import React from "react";
@@ -48,52 +50,79 @@ export default function register() {
     });
 
     const goToLogin = () => router.push("/")
+
+    const [submitting, setSubmitting] = React.useState(false);
+    const [dialogSubmitting, setDialogSubmitting] = React.useState(false);
+
+    const toastError = (message: string) =>
+        toast.error(message, {
+            position: "top-center",
+            autoClose: 3000,
+            theme: "colored",
+        });
+
     const handleSubmitstu = async () => {
+        if (dialogSubmitting) return;
         console.log(student)
         if (Object.values(student).includes("")) {
-            alert("กรุณากรอกข้อมูลให้ครบ");
+            toastError("กรุณากรอกข้อมูลให้ครบ");
         } else {
             console.log(student);
-            const res = await Api.post("/student", student);
-            if (res.status == 200) {
-                toast.success("คุณลงทะเบียนเรียบร้อยแล้ว", {
-                    position: "top-center",
-                    autoClose: 2500,
-                    hideProgressBar: false,
-                    closeOnClick: true,
-                    pauseOnHover: true,
-                    draggable: true,
-                    progress: undefined,
-                    theme: "colored",
-                  });
-                  setTimeout(goToLogin, 3000)
-                ;
+            setDialogSubmitting(true);
+            try {
+                const res = await Api.post("/student", student);
+                if (res.status == 200) {
+                    toast.success("คุณลงทะเบียนเรียบร้อยแล้ว", {
+                        position: "top-center",
+                        autoClose: 2500,
+                        hideProgressBar: false,
+                        closeOnClick: true,
+                        pauseOnHover: true,
+                        draggable: true,
+                        progress: undefined,
+                        theme: "colored",
+                      });
+                      setTimeout(goToLogin, 3000)
+                    ;
+                }
+            } catch (error: any) {
+                toastError(error?.response?.data?.message || "เกิดข้อผิดพลาดในการลงทะเบียน กรุณาลองใหม่อีกครั้ง");
+            } finally {
+                setDialogSubmitting(false);
             }
         }
     }
 
     const handleSubmitlect = async () => {
+        if (dialogSubmitting) return;
         console.log(lecturer)
         // lect_faculty is optional on the backend (nullable), so it's left
         // out of the "all fields must be filled" check below.
         const { lect_faculty, ...requiredFields } = lecturer;
         if (Object.values(requiredFields).includes("")) {
-            alert("กรุณากรอกข้อมูลให้ครบ");
+            toastError("กรุณากรอกข้อมูลให้ครบ");
         } else {
-            const res = await Api.post("/lecturer", lecturer);
-            if (res.status == 200) {
-                toast.success("คุณลงทะเบียนเรียบร้อยแล้ว", {
-                    position: "top-center",
-                    autoClose: 2500,
-                    hideProgressBar: false,
-                    closeOnClick: true,
-                    pauseOnHover: true,
-                    draggable: true,
-                    progress: undefined,
-                    theme: "colored",
-                  });
-                  setTimeout(goToLogin, 3000)
-                ;
+            setDialogSubmitting(true);
+            try {
+                const res = await Api.post("/lecturer", lecturer);
+                if (res.status == 200) {
+                    toast.success("คุณลงทะเบียนเรียบร้อยแล้ว", {
+                        position: "top-center",
+                        autoClose: 2500,
+                        hideProgressBar: false,
+                        closeOnClick: true,
+                        pauseOnHover: true,
+                        draggable: true,
+                        progress: undefined,
+                        theme: "colored",
+                      });
+                      setTimeout(goToLogin, 3000)
+                    ;
+                }
+            } catch (error: any) {
+                toastError(error?.response?.data?.message || "เกิดข้อผิดพลาดในการลงทะเบียน กรุณาลองใหม่อีกครั้ง");
+            } finally {
+                setDialogSubmitting(false);
             }
         }
     }
@@ -101,19 +130,32 @@ export default function register() {
 
 
     const [mailValid, setMailValid] = React.useState(false);
+    const [emailTaken, setEmailTaken] = React.useState(false);
+    const [confirmPassword, setConfirmPassword] = React.useState("");
+    const [showPassword, setShowPassword] = React.useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
     const [file, setFile] = React.useState<any>();
 
     const [studentOpen, setStudentOpen] = React.useState(false);
     const [lecturerOpen, setlecturerOpen] = React.useState(false);
 
-    const handleMail = (event: React.ChangeEvent<HTMLInputElement>) => {
-        if (event.target.value.match(/.+@ubu.ac.th/g)) {
-            setMailValid(false);
-            setData({ ...data, user_email: event.target.value });
-        } else {
-            setMailValid(true);
+    const handleMail = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const email = event.target.value;
+    if (email.match(/.+@ubu\.ac\.th$/)) {
+        setMailValid(false);
+        setEmailTaken(false);
+        setData({ ...data, user_email: email });
+        try {
+            const res = await Api.get(`/check-email?email=${encodeURIComponent(email)}`);
+            if (res.data.exists) setEmailTaken(true);
+        } catch {
+            // เงียบไว้ ไม่ต้อง toast ถ้าแค่เช็คซ้ำล้มเหลว
         }
+    } else {
+        setMailValid(true);
+        setEmailTaken(false);
     }
+}
 
     const handleChangestu = (event: React.ChangeEvent<HTMLInputElement>) => {
         setstudent({ ...student, [event.target.name]: event.target.value });
@@ -131,11 +173,39 @@ export default function register() {
         setData({ ...data, role_id: Number(event.target.value) });
     }
 
+    const handleKeyDown = (event: React.KeyboardEvent) => {
+        if (event.key === "Enter") {
+            handleSubmit();
+        }
+    }
+
     const handleSubmit = async () => {
-        if (Object.values(data).includes("")) {
-            alert("กรุณากรอกข้อมูลให้ครบ");
-        } else {
-            console.log(data);
+        if (submitting) return;
+
+        if (Object.values(data).includes("") || data.role_id === 0) {
+            toastError("กรุณากรอกข้อมูลให้ครบ และเลือกสถานะ (นักเรียน/อาจารย์)");
+            return;
+        }
+        if (mailValid || !data.user_email) {
+            toastError("กรุณากรอกอีเมลให้ถูกต้อง (ต้องเป็น @ubu.ac.th)");
+            return;
+        }
+        if (emailTaken) {
+            toastError("อีเมลนี้ถูกใช้งานแล้ว กรุณาใช้อีเมลอื่น");
+            return;
+        }
+        if (data.user_password.length < 6) {
+            toastError("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
+            return;
+        }
+        if (data.user_password !== confirmPassword) {
+            toastError("รหัสผ่านทั้งสองช่องไม่ตรงกัน");
+            return;
+        }
+
+        console.log(data);
+        setSubmitting(true);
+        try {
             const res = await Api.post("/register", data);
             console.log(res);
             if (data.role_id === 1) {
@@ -145,6 +215,10 @@ export default function register() {
                 setlecturer({ ...lecturer, user_id: res.data.id });
                 setlecturerOpen(true);
             }
+        } catch (error: any) {
+            toastError(error?.response?.data?.message || "อีเมลนี้อาจถูกใช้งานแล้ว หรือเกิดข้อผิดพลาดในการสมัครสมาชิก");
+        } finally {
+            setSubmitting(false);
         }
     }
 
@@ -203,10 +277,78 @@ export default function register() {
                     </Typography>
                 </Box>
 
-                <TextField label="Username" name="user_name" onChange={handleChange} size="small" fullWidth sx={inputStyle} />
-                <TextField label="Email" error={mailValid} onChange={handleMail} helperText={mailValid ? 'email must be @ubu.ac.th' : ' '} size="small" fullWidth sx={inputStyle} />
-                <TextField label="Password" onChange={handleChange} name="user_password" type="password" size="small" fullWidth sx={inputStyle} />
-                <TextField label="Password Matching" size="small" type="password" fullWidth sx={inputStyle} />
+                <TextField label="Username" name="user_name" onChange={handleChange} onKeyDown={handleKeyDown} size="small" fullWidth disabled={submitting} sx={inputStyle} />
+                <TextField
+                    label="Email"
+                    error={mailValid || emailTaken}
+                    onChange={handleMail}
+                    onKeyDown={handleKeyDown}
+                    helperText={
+                        mailValid
+                            ? 'email must be @ubu.ac.th'
+                            : emailTaken
+                            ? 'อีเมลนี้ถูกใช้งานแล้ว'
+                            : ' '
+                    }
+                    size="small"
+                    fullWidth
+                    disabled={submitting}
+                    sx={inputStyle}
+                />
+                <TextField
+                    label="Password"
+                    onChange={handleChange}
+                    onKeyDown={handleKeyDown}
+                    name="user_password"
+                    type={showPassword ? "text" : "password"}
+                    size="small"
+                    fullWidth
+                    disabled={submitting}
+                    sx={inputStyle}
+                    InputProps={{
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <IconButton
+                                    aria-label="toggle password visibility"
+                                    onClick={() => setShowPassword((prev) => !prev)}
+                                    edge="end"
+                                    size="small"
+                                    tabIndex={-1}
+                                >
+                                    {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                                </IconButton>
+                            </InputAdornment>
+                        ),
+                    }}
+                />
+                <TextField
+                    label="Password Matching"
+                    name="confirm_password"
+                    size="small"
+                    type={showConfirmPassword ? "text" : "password"}
+                    fullWidth
+                    disabled={submitting}
+                    sx={inputStyle}
+                    error={confirmPassword !== "" && confirmPassword !== data.user_password}
+                    helperText={confirmPassword !== "" && confirmPassword !== data.user_password ? "รหัสผ่านไม่ตรงกัน" : " "}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    InputProps={{
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <IconButton
+                                    aria-label="toggle confirm password visibility"
+                                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                                    edge="end"
+                                    size="small"
+                                    tabIndex={-1}
+                                >
+                                    {showConfirmPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                                </IconButton>
+                            </InputAdornment>
+                        ),
+                    }}
+                />
 
                 <FormControl sx={{ mb: 2.5 }}>
                     <FormLabel id="demo-row-radio-buttons-group-label">Role</FormLabel>
@@ -221,7 +363,9 @@ export default function register() {
                     </RadioGroup>
                 </FormControl>
 
-                <Button variant="contained" fullWidth size="large" sx={{ fontWeight: 600 }} onClick={handleSubmit}>ลงทะเบียน</Button>
+                <Button variant="contained" fullWidth size="large" disabled={submitting} sx={{ fontWeight: 600 }} onClick={handleSubmit}>
+                    {submitting ? "กำลังสมัคร..." : "ลงทะเบียน"}
+                </Button>
                 <Button variant="text" fullWidth sx={{ mt: 1 }} href="/">มีบัญชีอยู่แล้ว? เข้าสู่ระบบ</Button>
             </Paper>
         </Box>
@@ -277,7 +421,9 @@ export default function register() {
                 </Button>
             </DialogContent>
             <DialogActions sx={{ p: 2.5 }}>
-                <Button variant="contained" onClick={handleSubmitstu}>ยืนยัน</Button>
+                <Button variant="contained" disabled={dialogSubmitting} onClick={handleSubmitstu}>
+                    {dialogSubmitting ? "กำลังบันทึก..." : "ยืนยัน"}
+                </Button>
             </DialogActions>
         </Dialog>
 
@@ -312,7 +458,9 @@ export default function register() {
                 </Button>
             </DialogContent>
             <DialogActions sx={{ p: 2.5 }}>
-                <Button variant="contained" onClick={handleSubmitlect}>ยืนยัน</Button>
+                <Button variant="contained" disabled={dialogSubmitting} onClick={handleSubmitlect}>
+                    {dialogSubmitting ? "กำลังบันทึก..." : "ยืนยัน"}
+                </Button>
             </DialogActions>
         </Dialog></>
     );

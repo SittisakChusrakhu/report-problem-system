@@ -7,23 +7,26 @@ import {
   TextField,
   Typography,
   Divider,
+  CircularProgress,
 } from "@mui/material";
 import { Edit, Close, Save } from "@mui/icons-material";
-import React, { useState } from "react";
+import React from "react";
 import NavbarStu from "../components/NavbarStu";
 import axios from "axios";
 import { Api } from "./api/api";
-import 'react-toastify/dist/ReactToastify.css';
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import "dayjs/locale/th"
 import Avatar from '@mui/material/Avatar';
 
-interface StudentData {
-  stu_id: String;
+interface StudentFormData {
+  username: string;
+  stu_id: string;
+  stu_email: string;
   stu_grade: string;
   stu_faculty: string;
   stu_major: string;
   avatar: string;
-  uid: any;
 }
 
 const fieldLabels: Record<string, string> = {
@@ -35,105 +38,200 @@ const fieldLabels: Record<string, string> = {
   stu_major: "สาขา",
 };
 
+const EMPTY_FORM_DATA: StudentFormData = {
+  username: "",
+  stu_id: "",
+  stu_email: "",
+  stu_grade: "",
+  stu_faculty: "",
+  stu_major: "",
+  avatar: "",
+};
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function buildFormData(data: any): StudentFormData {
+  return {
+    username: data?.username ?? "",
+    stu_id: data?.stu_id ?? "",
+    stu_email: data?.stu_email ?? "",
+    stu_grade: data?.stu_grade ?? "",
+    stu_faculty: data?.stu_faculty ?? "",
+    stu_major: data?.stu_major ?? "",
+    avatar: data?.avatar ?? "",
+  };
+}
+
+function validateForm(data: StudentFormData): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (!data.username.trim()) errors.username = "กรุณากรอกชื่อ-นามสกุล";
+  if (!data.stu_id.trim()) errors.stu_id = "กรุณากรอกรหัสนักศึกษา";
+  if (!data.stu_email.trim()) {
+    errors.stu_email = "กรุณากรอกอีเมล";
+  } else if (!EMAIL_REGEX.test(data.stu_email)) {
+    errors.stu_email = "รูปแบบอีเมลไม่ถูกต้อง";
+  }
+  if (!data.stu_grade.trim()) errors.stu_grade = "กรุณากรอกชั้นปี";
+  if (!data.stu_faculty.trim()) errors.stu_faculty = "กรุณากรอกคณะ";
+  if (!data.stu_major.trim()) errors.stu_major = "กรุณากรอกสาขา";
+  return errors;
+}
+
 export default function StudentComponent() {
   const [rid, setRid] = React.useState<number>(0);
   const [datastudent, setdatastudent] = React.useState<any>(null);
-  const [isEdit, setIsEdit] = React.useState(false);
-  const [editData, setEditData] = React.useState<StudentData>({
-    stu_id: "",
-    stu_grade: "",
-    stu_faculty: "",
-    stu_major: "",
-    avatar: "",
-    uid: "",
-  });
-  const [username, setUsername] = React.useState("");
-  const [stuId, setStuId] = React.useState("");
-  const [stuEmail, setStuEmail] = React.useState("");
-  const [stuGrade, setStuGrade] = React.useState("");
-  const [stuFaculty, setStuFaculty] = React.useState("");
-  const [stuMajor, setStuMajor] = React.useState("");
-  const [avatar, setAvatar] = React.useState("");
   const [uid, setuid] = React.useState("");
+  const [isLoadingProfile, setIsLoadingProfile] = React.useState(true);
+  const [isEdit, setIsEdit] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
+  const [formData, setFormData] = React.useState<StudentFormData>(EMPTY_FORM_DATA);
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     setRid(Number(localStorage.getItem("rid")));
   }, []);
 
   React.useEffect(() => {
+    if (!rid) return;
+    setIsLoadingProfile(true);
     Api
       .get<any[]>(`/student?id=${rid}`)
       .then(function (response) {
         // Backend returns snake_case fields (username, stu_id, stu_email,
-        // stu_grade, stu_faculty, stu_major) — this was reading camelCase
-        // names that don't exist on the response, and stu_faculty was
-        // accidentally being set from the grade field.
-        setUsername(response.data[0].username);
-        setStuEmail(response.data[0].stu_email);
-        setStuId(response.data[0].stu_id);
-        setStuGrade(response.data[0].stu_grade);
-        setStuFaculty(response.data[0].stu_faculty);
-        setStuMajor(response.data[0].stu_major);
-        setAvatar(response.data[0].avatar);
-        setuid(response.data[0].uid);
-        setdatastudent(response.data[0]);
-        console.log(response.data[0]);
+        // stu_grade, stu_faculty, stu_major).
+        const data = response.data[0];
+        setuid(data.uid);
+        setdatastudent(data);
+        setFormData(buildFormData(data));
+        console.log(data);
       })
       .catch(function (error) {
         console.log(error);
+        toast.error("โหลดข้อมูลโปรไฟล์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", {
+          position: "top-center",
+          autoClose: 3000,
+          theme: "colored",
+        });
+      })
+      .finally(function () {
+        setIsLoadingProfile(false);
       });
   }, [rid]);
 
-
-  const handleUpdate = () => {
-    const newData: StudentData = {
-      stu_id: stuId,
-      stu_grade: stuGrade,
-      stu_faculty: stuFaculty,
-      stu_major: stuMajor,
-      avatar: avatar,
-      uid: {
-        username: username,
-        stu_email: stuEmail,
+  const handleFieldChange =
+    (field: keyof StudentFormData) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+      if (errors[field]) {
+        setErrors((prev) => {
+          const next = { ...prev };
+          delete next[field];
+          return next;
+        });
       }
     };
 
-    Api
-      .put(`/student/${rid}`, newData)
-      .then(function (response) {
-        console.log(response.data);
-        //window.location.reload();
+  const startEdit = () => {
+    setFormData(buildFormData(datastudent));
+    setErrors({});
+    setIsEdit(true);
+  };
 
-      })
-      .catch(function (error) {
-        console.log(error);
-      }); console.log(newData);
-  }
+  const cancelEdit = () => {
+    setFormData(buildFormData(datastudent));
+    setErrors({});
+    setIsEdit(false);
+  };
 
+  const handleUpdate = async () => {
+    const validationErrors = validateForm(formData);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      toast.warning("กรุณากรอกข้อมูลให้ครบถ้วนและถูกต้องก่อนบันทึก", {
+        position: "top-center",
+        autoClose: 3000,
+        theme: "colored",
+      });
+      return;
+    }
 
-  const [files, setFiles] = useState<File[]>([]);
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const upload_single_image = async (e: any) => {
-    const file = e.target.files[0];
-    const validImageTypes = ["image/jpeg", "image/png", "image/gif"]; // ประเภทไฟล์รูปภาพที่ยอมรับ
-    if (validImageTypes.includes(file.type)) { // ตรวจสอบว่าเป็นไฟล์รูปภาพหรือไม่
-      const data = new FormData();
-      data.append("file", file);
-      data.append("upload_preset", "student");
-      axios.post("https://api.cloudinary.com/v1_1/drynd8ioj/image/upload", data)
-        .then((res) => {
-          setImageUrls([res.data.secure_url]);
-          setAvatar(res.data.secure_url);
-        });
-    } else {
-      alert("กรุณาเลือกไฟล์รูปภาพเท่านั้น");
+    setIsSaving(true);
+    const newData = {
+      stu_id: formData.stu_id,
+      stu_grade: formData.stu_grade,
+      stu_faculty: formData.stu_faculty,
+      stu_major: formData.stu_major,
+      avatar: formData.avatar,
+      uid: {
+        username: formData.username,
+        stu_email: formData.stu_email,
+      },
+    };
+
+    try {
+      await Api.put(`/student/${rid}`, newData);
+      toast.success("บันทึกข้อมูลสำเร็จ", {
+        position: "top-center",
+        autoClose: 2000,
+        theme: "colored",
+      });
+      // อัปเดตข้อมูลที่แสดงในหัวการ์ดทันทีโดยไม่ต้องรีเฟรช และปิดโหมดแก้ไข
+      setdatastudent((prev: any) => ({ ...prev, ...formData }));
+      setIsEdit(false);
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+        {
+          position: "top-center",
+          autoClose: 3000,
+          theme: "colored",
+        }
+      );
+    } finally {
+      setIsSaving(false);
     }
   };
 
-
+  const upload_single_image = async (e: any) => {
+    const file = e.target.files[0];
+    const validImageTypes = ["image/jpeg", "image/png", "image/gif"]; // ประเภทไฟล์รูปภาพที่ยอมรับ
+    if (!file) return;
+    if (!validImageTypes.includes(file.type)) {
+      toast.warning("กรุณาเลือกไฟล์รูปภาพเท่านั้น (jpg, png, gif)", {
+        position: "top-center",
+        autoClose: 3000,
+        theme: "colored",
+      });
+      return;
+    }
+    setIsUploadingAvatar(true);
+    const data = new FormData();
+    data.append("file", file);
+    data.append("upload_preset", "student");
+    try {
+      const res = await axios.post(
+        "https://api.cloudinary.com/v1_1/drynd8ioj/image/upload",
+        data
+      );
+      setFormData((prev) => ({ ...prev, avatar: res.data.secure_url }));
+    } catch (error) {
+      toast.error("อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", {
+        position: "top-center",
+        autoClose: 3000,
+        theme: "colored",
+      });
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   return (
-    <Box component="form" noValidate autoComplete="off">
+    <Box
+      component="form"
+      noValidate
+      autoComplete="off"
+      onSubmit={(e) => e.preventDefault()}
+    >
       <NavbarStu />
       <Box
         component="main"
@@ -151,21 +249,25 @@ export default function StudentComponent() {
         </Typography>
 
         <Card sx={{ maxWidth: 760 }}>
-          <Box
-            sx={{
-              background: "linear-gradient(135deg, #3A8E81 0%, #1F4F49 100%)",
-              p: 4,
-              display: "flex",
-              alignItems: "center",
-              gap: 3,
-              color: "#fff",
-            }}
-          >
-            {datastudent && (
-              <>
+          {isLoadingProfile ? (
+            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", py: 8 }}>
+              <CircularProgress />
+            </Box>
+          ) : datastudent ? (
+            <>
+              <Box
+                sx={{
+                  background: "linear-gradient(135deg, #3A8E81 0%, #1F4F49 100%)",
+                  p: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                  color: "#fff",
+                }}
+              >
                 <Avatar
                   sx={{ width: 88, height: 88, border: "3px solid rgba(255,255,255,0.4)" }}
-                  src={`${imageUrls.length > 0 ? imageUrls[0] : datastudent.avatar}`}
+                  src={formData.avatar}
                   alt="avatar"
                 />
                 <Box sx={{ flex: 1 }}>
@@ -179,16 +281,15 @@ export default function StudentComponent() {
                     component="label"
                     size="small"
                     variant="outlined"
-                    disabled={!isEdit}
+                    disabled={!isEdit || isUploadingAvatar}
                     sx={{ mt: 1.5, color: "#fff", borderColor: "rgba(255,255,255,0.6)" }}
                   >
-                    เปลี่ยนรูปโปรไฟล์
+                    {isUploadingAvatar ? "กำลังอัปโหลด..." : "เปลี่ยนรูปโปรไฟล์"}
                     <input
                       hidden
-                      accept=".jpg,.jpeg,.png*"
+                      accept=".jpg,.jpeg,.png,.gif"
                       id="fileInput"
                       onChange={upload_single_image}
-                      multiple
                       type="file"
                     />
                   </Button>
@@ -197,86 +298,111 @@ export default function StudentComponent() {
                   variant="contained"
                   color={isEdit ? "secondary" : "inherit"}
                   startIcon={isEdit ? <Close /> : <Edit />}
-                  onClick={() => setIsEdit(!isEdit)}
+                  disabled={isSaving}
+                  onClick={() => (isEdit ? cancelEdit() : startEdit())}
                   sx={!isEdit ? { color: "primary.main", backgroundColor: "#fff" } : {}}
                 >
                   {isEdit ? "ยกเลิก" : "แก้ไข"}
                 </Button>
-              </>
-            )}
-          </Box>
+              </Box>
 
-          <CardContent sx={{ p: { xs: 2.5, sm: 4 } }}>
-            {datastudent && (
-              <Grid container spacing={2.5}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label={fieldLabels.stu_id}
-                    fullWidth
-                    disabled={!isEdit}
-                    onChange={(e) => setStuId((e.target.value))}
-                    defaultValue={datastudent.stu_id}
-                  />
+              <CardContent sx={{ p: { xs: 2.5, sm: 4 } }}>
+                <Grid container spacing={2.5}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label={fieldLabels.stu_id}
+                      fullWidth
+                      disabled={!isEdit}
+                      value={formData.stu_id}
+                      onChange={handleFieldChange("stu_id")}
+                      error={!!errors.stu_id}
+                      helperText={errors.stu_id}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label={fieldLabels.username}
+                      fullWidth
+                      disabled={!isEdit}
+                      value={formData.username}
+                      onChange={handleFieldChange("username")}
+                      error={!!errors.username}
+                      helperText={errors.username}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label={fieldLabels.stu_email}
+                      fullWidth
+                      disabled={!isEdit}
+                      value={formData.stu_email}
+                      onChange={handleFieldChange("stu_email")}
+                      error={!!errors.stu_email}
+                      helperText={errors.stu_email}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label={fieldLabels.stu_grade}
+                      fullWidth
+                      disabled={!isEdit}
+                      value={formData.stu_grade}
+                      onChange={handleFieldChange("stu_grade")}
+                      error={!!errors.stu_grade}
+                      helperText={errors.stu_grade}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label={fieldLabels.stu_faculty}
+                      fullWidth
+                      disabled={!isEdit}
+                      value={formData.stu_faculty}
+                      onChange={handleFieldChange("stu_faculty")}
+                      error={!!errors.stu_faculty}
+                      helperText={errors.stu_faculty}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label={fieldLabels.stu_major}
+                      fullWidth
+                      disabled={!isEdit}
+                      value={formData.stu_major}
+                      onChange={handleFieldChange("stu_major")}
+                      error={!!errors.stu_major}
+                      helperText={errors.stu_major}
+                    />
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label={fieldLabels.username}
-                    fullWidth
-                    disabled={!isEdit}
-                    onChange={(e) => setUsername((e.target.value))}
-                    defaultValue={datastudent.username}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label={fieldLabels.stu_email}
-                    fullWidth
-                    disabled={!isEdit}
-                    onChange={(e) => setStuEmail((e.target.value))}
-                    defaultValue={datastudent.stu_email}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label={fieldLabels.stu_grade}
-                    fullWidth
-                    disabled={!isEdit}
-                    onChange={(e) => setStuGrade((e.target.value))}
-                    defaultValue={datastudent.stu_grade}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label={fieldLabels.stu_faculty}
-                    fullWidth
-                    disabled={!isEdit}
-                    onChange={(e) => setStuFaculty((e.target.value))}
-                    defaultValue={datastudent.stu_faculty}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label={fieldLabels.stu_major}
-                    fullWidth
-                    disabled={!isEdit}
-                    onChange={(e) => setStuMajor((e.target.value))}
-                    defaultValue={datastudent.stu_major}
-                  />
-                </Grid>
-              </Grid>
-            )}
 
-            {isEdit && (
-              <>
-                <Divider sx={{ my: 3 }} />
-                <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-                  <Button variant="contained" startIcon={<Save />} onClick={() => handleUpdate()}>
-                    บันทึกการแก้ไข
-                  </Button>
-                </Box>
-              </>
-            )}
-          </CardContent>
+                {isEdit && (
+                  <>
+                    <Divider sx={{ my: 3 }} />
+                    <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1.5 }}>
+                      <Button variant="outlined" disabled={isSaving} onClick={cancelEdit}>
+                        ยกเลิก
+                      </Button>
+                      <Button
+                        variant="contained"
+                        startIcon={
+                          isSaving ? <CircularProgress size={16} color="inherit" /> : <Save />
+                        }
+                        disabled={isSaving}
+                        onClick={handleUpdate}
+                      >
+                        {isSaving ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+                      </Button>
+                    </Box>
+                  </>
+                )}
+              </CardContent>
+            </>
+          ) : (
+            <Box sx={{ p: 4 }}>
+              <Typography color="text.secondary">ไม่พบข้อมูลโปรไฟล์</Typography>
+            </Box>
+          )}
         </Card>
       </Box>
     </Box>

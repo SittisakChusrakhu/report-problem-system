@@ -5,41 +5,110 @@ import {
   Box,
   Paper,
   InputAdornment,
+  IconButton,
 } from "@mui/material";
-import { Email, Lock, School } from "@mui/icons-material";
+import { Email, Lock, School, Visibility, VisibilityOff } from "@mui/icons-material";
 import router from "next/router";
 import React from "react";
 import { Api } from "./api/api";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function BasicCard() {
   const [data, setData] = React.useState({
     user_email: "",
     user_password: "",
   });
+  const [isLoggingIn, setIsLoggingIn] = React.useState(false);
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [failedAttempts, setFailedAttempts] = React.useState(0);
 
-  const onLogin = () => {
-    Api.post("/login", data)
-      .then((res) => {
-        // Backend now returns { token, user: profile } instead of the
-        // profile object directly, and every protected endpoint requires
-        // that token in an Authorization header — so it has to be saved.
-        const { token, user } = res.data;
-        localStorage.setItem("token", token);
-        localStorage.setItem("Logged", JSON.stringify(user));
-        localStorage.setItem("rid", user.id);
-        if (user.stu_id) {
-          router.push("/stu_home");
-        } else if (user.lect_roomnum !== undefined) {
-          router.push("/lect_home");
-        } else if (user.role_id === 3) {
-          router.push("/admin");
-        } else {
-          alert("ไม่พบข้อมูลที่เหมาะสม");
-        }
-      })
-      .catch((error) => {
-        alert("เกิดข้อผิดพลาดในการส่งข้อมูล");
+  const onLogin = async () => {
+    if (isLoggingIn) return; // กันกดซ้ำระหว่างรอ API ตอบกลับ
+
+    if (!data.user_email.trim() || !data.user_password) {
+      toast.warning("กรุณากรอกอีเมลและรหัสผ่านให้ครบ", {
+        position: "top-center",
+        autoClose: 2000,
+        theme: "colored",
       });
+      return;
+    }
+
+    if (!data.user_email.includes("@")) {
+      toast.warning("รูปแบบอีเมลไม่ถูกต้อง", {
+        position: "top-center",
+        autoClose: 2000,
+        theme: "colored",
+      });
+      return;
+    }
+
+    setIsLoggingIn(true);
+    try {
+      const res = await Api.post("/login", data);
+      // Backend now returns { token, user: profile } instead of the
+      // profile object directly, and every protected endpoint requires
+      // that token in an Authorization header — so it has to be saved.
+      const { token, user } = res.data;
+      localStorage.setItem("token", token);
+      localStorage.setItem("Logged", JSON.stringify(user));
+      localStorage.setItem("rid", user.id);
+      setFailedAttempts(0);
+
+      if (user.stu_id || (user.lect_roomnum !== undefined) || user.role_id === 3) {
+        toast.success("เข้าสู่ระบบสำเร็จ", {
+          position: "top-center",
+          autoClose: 1200,
+          theme: "colored",
+        });
+      }
+
+      if (user.stu_id) {
+        setTimeout(() => router.push("/stu_home"), 800);
+      } else if (user.lect_roomnum !== undefined) {
+        setTimeout(() => router.push("/lect_home"), 800);
+      } else if (user.role_id === 3) {
+        setTimeout(() => router.push("/admin"), 800);
+      } else {
+        toast.error("ไม่พบข้อมูลที่เหมาะสม", {
+          position: "top-center",
+          autoClose: 3000,
+          theme: "colored",
+        });
+        setIsLoggingIn(false);
+      }
+    } catch (error: any) {
+      const nextAttemptCount = failedAttempts + 1;
+      setFailedAttempts(nextAttemptCount);
+
+      const baseMessage =
+        error?.response?.data?.message ||
+        "เกิดข้อผิดพลาดในการส่งข้อมูล อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+
+      // express-rate-limit ใส่ header บอกโควต้าที่เหลือมาให้ (ต้องเปิด
+      // exposedHeaders ที่ backend ไว้แล้วถึงจะอ่านได้ตรงนี้) ใช้ค่านี้
+      // เป็นความจริงจากฝั่ง server แทนการนับเองล้วนๆ ฝั่ง frontend
+      const remainingHeader = error?.response?.headers?.["ratelimit-remaining"];
+      const limitHeader = error?.response?.headers?.["ratelimit-limit"];
+      const remaining = remainingHeader !== undefined ? Number(remainingHeader) : null;
+      const limit = limitHeader !== undefined ? Number(limitHeader) : null;
+
+      let detail = `ผิดไปแล้ว ${nextAttemptCount} ครั้ง`;
+      if (remaining !== null && limit !== null) {
+        detail += ` (เหลืออีก ${remaining} จาก ${limit} ครั้ง ก่อนถูกระงับชั่วคราว)`;
+      }
+
+      toast.error(
+        error?.response?.status === 429 ? baseMessage : `${baseMessage} — ${detail}`,
+        {
+          position: "top-center",
+          autoClose: 3500,
+          theme: "colored",
+        }
+      );
+      setIsLoggingIn(false);
+    }
   };
 
   React.useEffect(() => {
@@ -65,6 +134,7 @@ export default function BasicCard() {
         p: 2,
       }}
     >
+      <ToastContainer />
       <Paper
         elevation={0}
         sx={{
@@ -140,57 +210,84 @@ export default function BasicCard() {
             กรอกอีเมลและรหัสผ่านเพื่อเข้าใช้งานบัญชีของคุณ
           </Typography>
 
-          <TextField
-            label="E-mail address"
-            name="user_email"
-            size="medium"
-            onChange={handleData}
-            fullWidth
-            sx={{ mb: 2.5 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Email fontSize="small" color="action" />
-                </InputAdornment>
-              ),
+          <Box
+            component="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              onLogin();
             }}
-          />
-
-          <TextField
-            label="Password"
-            name="user_password"
-            size="medium"
-            onChange={handleData}
-            type="password"
-            fullWidth
-            sx={{ mb: 1 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Lock fontSize="small" color="action" />
-                </InputAdornment>
-              ),
-            }}
-          />
-
-          <Typography variant="body2" sx={{ mb: 3.5, textAlign: "right" }}>
-            <Box
-              component="a"
-              href="/forgot-password"
-              sx={{ color: "primary.main", fontWeight: 600 }}
-            >
-              ลืมรหัสผ่าน?
-            </Box>
-          </Typography>
-
-          <Button
-            variant="contained"
-            size="large"
-            onClick={onLogin}
-            sx={{ fontWeight: 600, py: 1.4 }}
           >
-            เข้าสู่ระบบ
-          </Button>
+            <TextField
+              label="E-mail address"
+              name="user_email"
+              size="medium"
+              onChange={handleData}
+              disabled={isLoggingIn}
+              fullWidth
+              autoComplete="email"
+              sx={{ mb: 2.5 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Email fontSize="small" color="action" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+
+            <TextField
+              label="Password"
+              name="user_password"
+              size="medium"
+              onChange={handleData}
+              type={showPassword ? "text" : "password"}
+              disabled={isLoggingIn}
+              fullWidth
+              autoComplete="current-password"
+              sx={{ mb: 1 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Lock fontSize="small" color="action" />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      aria-label={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      edge="end"
+                      size="small"
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+
+            <Typography variant="body2" sx={{ mb: 3.5, textAlign: "right" }}>
+              <Box
+                component="a"
+                href="/forgot-password"
+                sx={{ color: "primary.main", fontWeight: 600 }}
+              >
+                ลืมรหัสผ่าน?
+              </Box>
+            </Typography>
+
+            <Button
+              type="submit"
+              variant="contained"
+              size="large"
+              fullWidth
+              disabled={isLoggingIn}
+              sx={{ fontWeight: 600, py: 1.4 }}
+            >
+              {isLoggingIn ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+            </Button>
+          </Box>
 
           <Typography variant="body2" color="text.secondary" sx={{ mt: 3, textAlign: "center" }}>
             ยังไม่มีบัญชี?{" "}

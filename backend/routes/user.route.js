@@ -1,5 +1,15 @@
 const router = require("express").Router();
-const { verifyToken, requireRole } = require("../middleware/authMiddleware");
+const {
+  verifyToken,
+  requireRole,
+  requireOwnerOrRole,
+} = require("../middleware/authMiddleware");
+const {
+  loginLimiter,
+  registerLimiter,
+  forgotPasswordLimiter,
+  checkEmailLimiter,
+} = require("../middleware/rateLimit");
 
 const authController = require("../controllers/auth.controller");
 const userController = require("../controllers/user.controller");
@@ -13,9 +23,10 @@ const notificationController = require("../controllers/notification.controller")
 
 // ==================== Public ====================
 
-router.post("/register", userController.createUser);
-router.post("/login", authController.login);
-router.post("/forgot-password", authController.forgotPassword);
+router.post("/register", registerLimiter, userController.createUser);
+router.post("/login", loginLimiter, authController.login);
+router.get("/check-email", checkEmailLimiter, userController.checkEmail);
+router.post("/forgot-password", forgotPasswordLimiter, authController.forgotPassword);
 router.post("/reset-password", authController.resetPassword);
 
 // POST /student และ POST /lecturer อยู่ในโซน public เพราะเป็นส่วนหนึ่งของ
@@ -24,15 +35,9 @@ router.post("/reset-password", authController.resetPassword);
 router.post("/student", studentController.createStudent);
 router.post("/lecturer", lecturerController.createLecturer);
 
-// ⚠️ TEMPORARY BOOTSTRAP ROUTE — ใช้ครั้งเดียวตอนตาราง roles ว่างเปล่า
-// เหตุผลที่ต้องอยู่ตรงนี้ (เหนือ verifyToken): route "/user/role" ตัวจริง
-// ด้านล่างถูกล็อกด้วย verifyToken + requireRole(3) ซึ่งต้อง login เป็น admin
-// ก่อนถึงจะเรียกได้ — แต่ตอนนี้ยังไม่มี role ในระบบเลย เลย login ไม่ได้เลย
-// (ไก่กับไข่) route นี้เลี่ยงปัญหานั้นชั่วคราวโดยไม่ต้องใช้ token
-//
-// ลบ route นี้ทิ้งทันทีหลังจากสร้าง role เสร็จแล้ว ไม่งั้นใครก็ยิง
-// POST มาสร้าง role ปลอมได้โดยไม่ต้อง login เลย
-router.post("/bootstrap/role", roleController.createRole);
+// ⚠️ BOOTSTRAP ROUTE ถูกลบแล้ว — roles ถูก seed ครบแล้ว (Student/Lecturer/
+// Admin) ตอนนี้สร้าง role ใหม่ต้อง login เป็น admin แล้วใช้
+// POST /user/role (ล็อกด้วย requireRole(3) ด้านล่าง) แทน
 
 // ==================== Protected ====================
 
@@ -50,10 +55,11 @@ router.get("/user/problem", problemController.getAllsProblem);
 
 router.get("/user/:id", roleController.getRole);
 router.post("/user/role", requireRole(3), roleController.createRole);
-router.put("/user/:id", userController.updateUser);
+router.put("/user/:id", requireOwnerOrRole("id", 3), userController.updateUser);
 router.delete("/user/:id", requireRole(3), userController.deleteUser);
 
 // Problem
+router.get("/problem/:id", problemController.getProblem);
 router.post("/problem", problemController.createProblem);
 router.put("/problem/:id", problemController.updateProblem);
 router.put("/problem/update/:id", problemController.updateStatus);
@@ -74,14 +80,18 @@ router.put("/notification/:id/read", notificationController.markAsRead);
 router.get("/student/all", studentController.getAllsStudent);
 router.get("/student", studentController.getSomeStudents);
 router.put("/student/:id", studentController.updateStudent);
-router.delete("/student/:sid/:uid", studentController.deleteAllsStudent);
+router.delete(
+  "/student/:sid/:uid",
+  requireRole(3),
+  studentController.deleteAllsStudent
+);
 
 // Lecturer
 router.get("/lecturer/all", lecturerController.getAllLecturer);
 router.get("/lecturer", lecturerController.getSomeLecturers);
 router.put("/lecturer/:id", lecturerController.updateLecturer);
 router.delete(
-  "/lecturer/:id",
+  "/lecturer/:id/:uid",
   requireRole(3),
   lecturerController.deleteLecturer
 );

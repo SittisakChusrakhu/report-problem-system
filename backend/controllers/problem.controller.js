@@ -1,4 +1,20 @@
 const problemService = require("../services/problem.service");
+const problemRepository = require("../repositories/problem.repository");
+
+// ใช้เช็คสิทธิ์ก่อนแก้ไข/ลบ "รายงานปัญหา" — ต้องเป็นนักศึกษาเจ้าของ
+// รายงานนี้เอง (แก้ไข/ลบรายงานของตัวเอง) หรือแอดมิน เดิมไม่มีการเช็คเลย
+// ใครก็ตามที่ login อยู่แก้/ลบรายงานของคนอื่นได้แค่เดา id
+function isProblemOwnerOrAdmin(problem, user) {
+  if (user.role_id === 3) return true;
+  return problem.student && problem.student.user_id === user.id;
+}
+
+// ใช้เช็คสิทธิ์ก่อนเปลี่ยนสถานะ/มาร์คอ่าน — ต้องเป็นอาจารย์ที่ถูกมอบหมาย
+// ให้ดูแลเคสนี้เอง หรือแอดมิน (ถ้ายังไม่ได้มอบหมายใครเลย ให้แอดมินเท่านั้น)
+function isAssignedLecturerOrAdmin(problem, user) {
+  if (user.role_id === 3) return true;
+  return problem.lecturer && problem.lecturer.user_id === user.id;
+}
 
 // Translates common Prisma error codes into messages a user can actually
 // act on, instead of a raw stack trace / generic "Server Error".
@@ -32,6 +48,20 @@ exports.getAllsProblem = async (req, res) => {
   }
 };
 
+exports.getProblem = async (req, res) => {
+  try {
+    const problem = await problemService.getProblemById(req.params.id);
+
+    res.json(problem);
+  } catch (error) {
+    console.error(error);
+
+    res.status(error.status || 500).json({
+      message: error.message || "Server Error",
+    });
+  }
+};
+
 exports.createProblem = async (req, res) => {
   try {
     const problem = await problemService.createProblem(req.body);
@@ -49,6 +79,14 @@ exports.createProblem = async (req, res) => {
 
 exports.updateProblem = async (req, res) => {
   try {
+    const existing = await problemRepository.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ message: "ไม่พบปัญหานี้" });
+    }
+    if (!isProblemOwnerOrAdmin(existing, req.user)) {
+      return res.status(403).json({ message: "Permission denied" });
+    }
+
     const problem = await problemService.updateProblem(
       req.params.id,
       req.body
@@ -67,6 +105,14 @@ exports.updateProblem = async (req, res) => {
 
 exports.updateStatus = async (req, res) => {
   try {
+    const existing = await problemRepository.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ message: "ไม่พบปัญหานี้" });
+    }
+    if (!isAssignedLecturerOrAdmin(existing, req.user)) {
+      return res.status(403).json({ message: "Permission denied" });
+    }
+
     const { status } = req.body;
     const problem = await problemService.updateStatus(req.params.id, status);
 
@@ -82,6 +128,14 @@ exports.updateStatus = async (req, res) => {
 
 exports.openProblem = async (req, res) => {
   try {
+    const existing = await problemRepository.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ message: "ไม่พบปัญหานี้" });
+    }
+    if (!isAssignedLecturerOrAdmin(existing, req.user)) {
+      return res.status(403).json({ message: "Permission denied" });
+    }
+
     const problem = await problemService.openProblem(req.params.id);
 
     res.json(problem);
@@ -96,6 +150,14 @@ exports.openProblem = async (req, res) => {
 
 exports.deleteProblem = async (req, res) => {
   try {
+    const existing = await problemRepository.findById(req.params.pid);
+    if (!existing) {
+      return res.status(404).json({ message: "ไม่พบปัญหานี้" });
+    }
+    if (!isProblemOwnerOrAdmin(existing, req.user)) {
+      return res.status(403).json({ message: "Permission denied" });
+    }
+
     const result = await problemService.deleteProblem(req.params.pid);
 
     res.json(result);
